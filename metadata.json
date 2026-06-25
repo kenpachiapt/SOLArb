@@ -1,0 +1,6 @@
+{
+  "name": "Solana Arbitraj Botu",
+  "description": "Solana ağında DEX'ler arası arbitraj fırsatlarını simüle eden, yapılandıran ve çalıştırılabilir kod üreten interaktif rehber ve yönetim paneli.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
