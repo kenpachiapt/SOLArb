@@ -117,6 +117,30 @@ export const INSTALLATION_GUIDE: GuideStep[] = [
     ]
   },
   {
+    title: "Telegram Ayarları",
+    icon: "Send",
+    content: [
+      {
+        heading: "1. Telegram Botu Oluşturma",
+        description: "Arbitraj işlemleri başarıyla tamamlandığında anlık olarak telefonunuza bildirim gelmesi için bir Telegram Botu kurabilirsiniz.",
+        points: [
+          "Telegram'da `@BotFather` kullanıcısını aratın ve `/newbot` komutunu gönderin.",
+          "Botunuza bir isim ve kullanıcı adı vererek size sağlanan benzersiz `HTTP API Token` değerini kopyalayın.",
+          "Token bilgisini paneldeki 'Telegram Bot Token' alanına veya botun `.env` dosyasındaki `TELEGRAM_TOKEN` alanına girin."
+        ]
+      },
+      {
+        heading: "2. Sohbet (Chat) ID Bulma",
+        description: "Botun mesajları sadece size iletebilmesi için kendi Telegram hesap numaranızı (Chat ID) bulmanız gerekir.",
+        points: [
+          "Telegram'da `@userinfobot` botunu aratın ve `/start` komutunu gönderin.",
+          "Bot size sayısal bir kimlik numarası (Örn: `593817420`) dönecektir.",
+          "Bu kimlik numarasını 'Telegram Chat ID' alanına veya .env dosyasındaki `TELEGRAM_CHAT_ID` alanına girin."
+        ]
+      }
+    ]
+  },
+  {
     title: "Botu Çalıştırma",
     icon: "Play",
     content: [
@@ -128,12 +152,14 @@ export const INSTALLATION_GUIDE: GuideStep[] = [
         ]
       },
       {
-        heading: "2. Botu Yayına Alma",
-        description: "Terminalinizi açın ve botu başlatmak için aşağıdaki komutu yazın:",
+        heading: "2. Botu Yayına Alma (7/24 Kesintisiz Linux)",
+        description: "Terminalinizi açın ve botu başlatmak için aşağıdaki komutları yazın:",
         code: "npx ts-node bot.ts",
         points: [
           "Bot başladığında cüzdan adresinizi, bakiye tipinizi ve tarama periyodunu terminalde göreceksiniz.",
-          "Arka planda kesintisiz çalışması için botu PM2 gibi proses yöneticileri ile çalıştırabilirsiniz: 'pm2 start npx --name solana-bot -- ts-node bot.ts'"
+          "Sunucuda (Ubuntu vb.) 7/24 kesintisiz çalışması için PM2 yöneticisini kurun: `npm install -g pm2`",
+          "PM2 ile arka planda başlatın: `pm2 start npx --name solana-bot -- ts-node bot.ts`",
+          "Sunucu yeniden başlasa bile botun otomatik açılması için: `pm2 startup` ve ardından `pm2 save` komutlarını çalıştırın."
         ]
       }
     ]

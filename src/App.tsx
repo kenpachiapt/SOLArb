@@ -20,7 +20,10 @@ import {
   HelpCircle,
   FileCode,
   Info,
-  DollarSign
+  DollarSign,
+  Lock,
+  KeyRound,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateArbitrageCode, TOKEN_MINTS, TOKEN_DECIMALS } from './arbitrageCode';
@@ -67,6 +70,18 @@ export default function App() {
   const [useJito, setUseJito] = useState<boolean>(true);
   const [priorityFeeSol, setPriorityFeeSol] = useState<number>(0.0001);
   const [scanInterval, setScanInterval] = useState<number>(5); // in seconds
+
+  // Telegram Notifications States
+  const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
+  const [telegramChatId, setTelegramChatId] = useState<string>(() => localStorage.getItem('telegram_chat_id') || '');
+
+  // Authentication & Panel Security States
+  const [panelUsername, setPanelUsername] = useState<string>(() => localStorage.getItem('panel_username') || 'admin');
+  const [panelPassword, setPanelPassword] = useState<string>(() => localStorage.getItem('panel_password') || 'solana123');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem('panel_logged_in') === 'true');
+  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
 
   // UI States
   const [activeTab, setActiveTab] = useState<'code' | 'guide' | 'risks'>('code');
@@ -201,9 +216,11 @@ export default function App() {
       slippagePct,
       useJito,
       priorityFeeSol,
-      scanIntervalMs: scanInterval * 1000
+      scanIntervalMs: scanInterval * 1000,
+      telegramToken,
+      telegramChatId
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -436,7 +453,76 @@ export default function App() {
   }, [amount, minProfitPct, startToken, prices]);
 
   return (
-    <div className="min-h-screen bg-[#0B0B0D] text-[#E4E4E7] font-sans selection:bg-indigo-600 selection:text-white">
+    <div className="min-h-screen bg-[#0B0B0D] text-[#E4E4E7] font-sans selection:bg-indigo-600 selection:text-white flex flex-col justify-between">
+      {!isAuthenticated ? (
+        <div className="flex-1 flex items-center justify-center px-4 py-16">
+          <div className="w-full max-w-md bg-[#121215] border border-[#222226] p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <div className="inline-flex p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-none mb-2">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h2 className="text-2xl font-serif font-bold text-white tracking-tight">GÜVENLİ ERİŞİM PANELİ</h2>
+              <p className="text-xs text-zinc-400 uppercase tracking-widest font-mono">Solana Arbitraj Kontrol Sistemi</p>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (loginUsername === panelUsername && loginPassword === panelPassword) {
+                setIsAuthenticated(true);
+                localStorage.setItem('panel_logged_in', 'true');
+                setLoginError('');
+              } else {
+                setLoginError('Hatalı kullanıcı adı veya şifre girdiniz.');
+              }
+            }} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Kullanıcı Adı</label>
+                <input
+                  type="text"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Kullanıcı adı girin"
+                  required
+                  className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Giriş Şifresi</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Şifrenizi girin"
+                  required
+                  className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              {loginError && (
+                <p className="text-xs text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-2 text-center font-medium">
+                  ⚠️ {loginError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-wider py-3 transition-all hover:shadow-[0_0_15px_rgba(79,70,229,0.3)] active:scale-[0.98]"
+              >
+                GİRİŞ YAP VE BAĞLAN
+              </button>
+            </form>
+
+            <div className="pt-4 border-t border-[#222226] text-center">
+              <p className="text-[9px] text-zinc-500 font-mono">
+                Varsayılan Bilgiler: Kullanıcı: <strong className="text-zinc-400">admin</strong> | Şifre: <strong className="text-zinc-400">solana123</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div>
       {/* Header: Swiss Editorial Aesthetic */}
       <header className="border-b border-[#222226] bg-[#0B0B0D] sticky top-0 z-40 backdrop-blur-md bg-opacity-95">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 md:py-8 flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
@@ -453,9 +539,20 @@ export default function App() {
           </div>
 
           <div className="flex flex-col items-start md:items-end gap-1.5">
-            <span className="text-3xl md:text-4xl font-serif italic text-indigo-500 font-semibold leading-none">
-              v2.6.0 <span className="text-xs font-sans tracking-widest uppercase text-zinc-500">STABLE</span>
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setIsAuthenticated(false);
+                  localStorage.removeItem('panel_logged_in');
+                }}
+                className="px-2.5 py-1 text-[10px] font-mono border border-rose-500/20 text-rose-400 bg-rose-500/5 hover:bg-rose-500/15 transition-all uppercase tracking-wider"
+              >
+                Çıkış Yap
+              </button>
+              <span className="text-3xl md:text-4xl font-serif italic text-indigo-500 font-semibold leading-none">
+                v2.6.0 <span className="text-xs font-sans tracking-widest uppercase text-zinc-500">STABLE</span>
+              </span>
+            </div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
               Ağ İletişim Protokolü / Jup.ag v6 API
             </p>
@@ -672,6 +769,88 @@ export default function App() {
                     className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
+              </div>
+
+              {/* Telegram Notification configuration */}
+              <div className="border-t border-[#222226] pt-4 space-y-3">
+                <div className="flex items-center justify-between pb-1">
+                  <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-sky-400" />
+                    Telegram Bildirimleri
+                  </span>
+                  <span className="text-[9px] font-mono text-zinc-500">Opsiyonel</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Bot Token</label>
+                    <input
+                      type="password"
+                      value={telegramToken}
+                      onChange={(e) => {
+                        setTelegramToken(e.target.value);
+                        localStorage.setItem('telegram_token', e.target.value);
+                      }}
+                      placeholder="123456:ABC-DEF..."
+                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Sohbet (Chat) ID</label>
+                    <input
+                      type="text"
+                      value={telegramChatId}
+                      onChange={(e) => {
+                        setTelegramChatId(e.target.value);
+                        localStorage.setItem('telegram_chat_id', e.target.value);
+                      }}
+                      placeholder="987654321"
+                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[9px] text-zinc-500 leading-normal">
+                  Telegram botunuz üzerinden arbitraj gerçekleştiğinde anlık bildirim alabilirsiniz. `@BotFather` aracılığıyla bir bot oluşturun.
+                </p>
+              </div>
+
+              {/* Panel Authentication configuration */}
+              <div className="border-t border-[#222226] pt-4 space-y-3">
+                <div className="flex items-center justify-between pb-1">
+                  <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+                    Panel Giriş Bilgileri
+                  </span>
+                  <span className="text-[9px] font-mono text-zinc-500">Güvenlik</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Kullanıcı Adı</label>
+                    <input
+                      type="text"
+                      value={panelUsername}
+                      onChange={(e) => {
+                        setPanelUsername(e.target.value);
+                        localStorage.setItem('panel_username', e.target.value);
+                      }}
+                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Şifre</label>
+                    <input
+                      type="text"
+                      value={panelPassword}
+                      onChange={(e) => {
+                        setPanelPassword(e.target.value);
+                        localStorage.setItem('panel_password', e.target.value);
+                      }}
+                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[9px] text-zinc-500 leading-normal">
+                  Giriş ekranı için belirlediğiniz kullanıcı adı ve şifre. Bilgiler güvenle tarayıcınızda (Local Storage) saklanır.
+                </p>
               </div>
 
               {/* Calculated Targets Overview */}
@@ -1306,6 +1485,9 @@ export default function App() {
           Bu uygulama eğitim ve simülasyon amaçlıdır. Finansal tavsiye içermez. Gerçek cüzdanlarla yapılan işlemler tamamen kullanıcının kendi sorumluluğundadır.
         </p>
       </footer>
+          </div>
+        </>
+      )}
     </div>
   );
 }

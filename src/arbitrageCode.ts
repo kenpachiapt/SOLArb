@@ -13,6 +13,8 @@ interface BotOptions {
   useJito: boolean;
   priorityFeeSol: number;
   scanIntervalMs: number;
+  telegramToken?: string;
+  telegramChatId?: string;
 }
 
 export const TOKEN_MINTS = {
@@ -43,7 +45,9 @@ export function generateArbitrageCode(options: BotOptions): string {
     slippagePct,
     useJito,
     priorityFeeSol,
-    scanIntervalMs
+    scanIntervalMs,
+    telegramToken,
+    telegramChatId
   } = options;
 
   const startMint = TOKEN_MINTS[startToken] || TOKEN_MINTS.SOL;
@@ -105,7 +109,11 @@ const CONFIG = {
 
   // Jito MEV Blok Motoru Kullanımı
   USE_JITO: ${useJito},
-  JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
+  JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
+
+  // Telegram Bildirim Ayarları
+  TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN || "${telegramToken || ''}",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "${telegramChatId || ''}"
 };
 
 // Cüzdan Kurulumu
@@ -136,6 +144,27 @@ try {
 
 // Solana Bağlantısı
 const connection = new Connection(CONFIG.RPC_URL, "confirmed");
+
+/**
+ * Telegram Botu üzerinden bildirim mesajı gönderir
+ */
+async function sendTelegramNotification(message: string) {
+  if (!CONFIG.TELEGRAM_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) return;
+  const url = \`https://api.telegram.org/bot\${CONFIG.TELEGRAM_TOKEN}/sendMessage\`;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: CONFIG.TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: "Markdown"
+      })
+    });
+  } catch (error) {
+    console.error("⚠️ Telegram bildirimi gönderilirken hata oluştu:", error.message);
+  }
+}
 
 /**
  * Jupiter API üzerinden teklif (quote) alır
@@ -293,11 +322,13 @@ async function checkArbitrage() {
       console.log(\"   [3/4] İşlemler imzalandı. Ağa gönderiliyor...\");
 
       if (CONFIG.USE_JITO) {
-        console.log(\"   [JITO] İşlemler Jito Blok Motoruna bundle olarak gönderiliyor (MEV koruması aktif)...");
+        console.log(\"   [JITO] İşlemler Jito Blok Motoruna bundle olarak gönderiliyor (MEV koruması aktif)...\");
         // Not: Gerçek dairesel arbitrajda iki swap işlemi Jito Bundle içinde tek seferde gönderilerek atomiklik sağlanır.
         const res1 = await sendTransactionToJito(tx1);
         const res2 = await sendTransactionToJito(tx2);
         console.log(\"   [JITO] Yanıt:\", JSON.stringify({ res1, res2 }));
+        console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
+        await sendTelegramNotification(\`🔔 *SOLANA ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)\`);
       } else {
         // Doğrudan RPC üzerinden gönder
         const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
@@ -311,6 +342,7 @@ async function checkArbitrage() {
         await connection.confirmTransaction(sig1, "confirmed");
         await connection.confirmTransaction(sig2, "confirmed");
         console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
+        await sendTelegramNotification(\`🔔 *SOLANA ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/\${sig1}\\n🔗 *Tx2:* https://solscan.io/tx/\${sig2}\`);
       }
       
     } catch (err) {
