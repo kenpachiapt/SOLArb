@@ -1,66 +1,4 @@
 /**
- * Solana Arbitraj Botu - Kod Jeneratörü
- * Bu dosya, kullanıcı ayarlarına göre özelleştirilmiş, çalıştırılabilir Solana arbitraj botu kodunu üretir.
- */
-
-interface BotOptions {
-  rpcUrl: string;
-  startToken: 'SOL' | 'USDC' | 'USDT' | 'BONK';
-  interToken: 'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF';
-  amount: number;
-  minProfitPct: number;
-  slippagePct: number;
-  useJito: boolean;
-  priorityFeeSol: number;
-  scanIntervalMs: number;
-  telegramToken?: string;
-  telegramChatId?: string;
-  privateKey?: string;
-}
-
-export const TOKEN_MINTS = {
-  SOL: 'So11111111111111111111111111111111111111112',
-  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-  BONK: 'DezXAZ8z7PnrnRJjz3wX4mTy3eUVVB8G3R6U47Hrkigw',
-  JUP: 'JUPyiwrYJF1m4F9C6SrxadSZm8V7uhcFM637vMhXCm7',
-  WIF: 'EKpQGSJtjMFqKZ98GWST69vThTZEgTUMmKW66m8zg1yO'
-};
-
-export const TOKEN_DECIMALS = {
-  SOL: 9,
-  USDC: 6,
-  USDT: 6,
-  BONK: 5,
-  JUP: 6,
-  WIF: 6
-};
-
-export function generateArbitrageCode(options: BotOptions): string {
-  const {
-    rpcUrl,
-    startToken,
-    interToken,
-    amount,
-    minProfitPct,
-    slippagePct,
-    useJito,
-    priorityFeeSol,
-    scanIntervalMs,
-    telegramToken,
-    telegramChatId,
-    privateKey
-  } = options;
-
-  const startMint = TOKEN_MINTS[startToken] || TOKEN_MINTS.SOL;
-  const interMint = TOKEN_MINTS[interToken] || TOKEN_MINTS.USDC;
-  const decimals = TOKEN_DECIMALS[startToken] || 9;
-  const interDecimals = TOKEN_DECIMALS[interToken] || 6;
-  const lamportsAmount = Math.round(amount * Math.pow(10, decimals));
-  const minProfitBps = Math.round(minProfitPct * 100);
-  const slippageBps = Math.round(slippagePct * 100);
-
-  return `/**
  * ====================================================================
  * SOLArb - DAİRESEL ARBİTRAJ BOTU (ÖZELLEŞTİRİLMİŞ ÜRETİM TASLAĞI)
  * ====================================================================
@@ -84,41 +22,41 @@ dotenv.config();
 // Yapılandırma Parametreleri
 const CONFIG = {
   // RPC Bağlantı Adresi (Özel RPC kullanılması şiddetle önerilir)
-  RPC_URL: "${rpcUrl || 'https://api.mainnet-beta.solana.com'}",
+  RPC_URL: "https://api.mainnet-beta.solana.com",
   
   // Ticaret Yapılacak Token Bilgileri
-  START_TOKEN: "${startToken}",
-  START_MINT: "${startMint}",
-  START_DECIMALS: ${decimals},
+  START_TOKEN: "SOL",
+  START_MINT: "So11111111111111111111111111111111111111112",
+  START_DECIMALS: 9,
   
-  INTER_TOKEN: "${interToken}",
-  INTER_MINT: "${interMint}",
-  INTER_DECIMALS: ${interDecimals},
+  INTER_TOKEN: "USDC",
+  INTER_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  INTER_DECIMALS: 6,
 
-  // İşlem Tutarı (${amount} ${startToken})
-  TRADE_AMOUNT: ${amount},
-  TRADE_AMOUNT_RAW: ${lamportsAmount}, // Lamport/Raw cinsinden
+  // İşlem Tutarı (5 SOL)
+  TRADE_AMOUNT: 5,
+  TRADE_AMOUNT_RAW: 5000000000, // Lamport/Raw cinsinden
 
   // Toleranslar ve Sınırlar
-  SLIPPAGE_BPS: ${slippageBps}, // Slipaj Tolere Oranı (%${slippagePct})
-  MIN_PROFIT_PCT: ${minProfitPct}, // Minimum Kâr Hedefi (%${minProfitPct})
+  SLIPPAGE_BPS: 20, // Slipaj Tolere Oranı (%0.2)
+  MIN_PROFIT_PCT: 0.5, // Minimum Kâr Hedefi (%0.5)
   
   // Öncelikli İşlem Ücreti (Priority Fee)
-  PRIORITY_FEE_SOL: ${priorityFeeSol}, // SOL cinsinden ek ücret
+  PRIORITY_FEE_SOL: 0.0001, // SOL cinsinden ek ücret
   
   // Tarama Sıklığı
-  SCAN_INTERVAL: ${scanIntervalMs}, // Milisaniye cinsinden (${scanIntervalMs / 1000} saniye)
+  SCAN_INTERVAL: 5000, // Milisaniye cinsinden (5 saniye)
 
   // Jito MEV Blok Motoru Kullanımı
-  USE_JITO: ${useJito},
+  USE_JITO: true,
   JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
 
   // Telegram Bildirim Ayarları
-  TELEGRAM_TOKEN: "${telegramToken || ''}",
-  TELEGRAM_CHAT_ID: "${telegramChatId || ''}"
+  TELEGRAM_TOKEN: "",
+  TELEGRAM_CHAT_ID: ""
 };
 
-let privateKeyString = "${privateKey || ''}";
+let privateKeyString = "";
 
 // Eğer yerel veya üst klasörde config.json varsa dinamik olarak yükle (panel ile tam senkronizasyon için)
 try {
@@ -173,7 +111,10 @@ if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.sta
 
 // Cüzdan Kurulumu
 let wallet: Keypair;
-const privateKeyStringValue = privateKeyString;
+
+if (!privateKeyString) {
+  privateKeyString = process.env.SOLANA_PRIVATE_KEY || "";
+}
 
 if (!privateKeyString) {
   console.error("❌ HATA: SOLANA_PRIVATE_KEY ortam değişkeni tanımlanmamış!");
@@ -205,7 +146,7 @@ const connection = new Connection(CONFIG.RPC_URL, "confirmed");
  */
 async function sendTelegramNotification(message: string) {
   if (!CONFIG.TELEGRAM_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) return;
-  const url = \`https://api.telegram.org/bot\${CONFIG.TELEGRAM_TOKEN}/sendMessage\`;
+  const url = `https://api.telegram.org/bot${CONFIG.TELEGRAM_TOKEN}/sendMessage`;
   try {
     await fetch(url, {
       method: "POST",
@@ -225,11 +166,11 @@ async function sendTelegramNotification(message: string) {
  * Jupiter API üzerinden teklif (quote) alır
  */
 async function getJupiterQuote(inputMint: string, outputMint: string, amount: number, slippageBps: number) {
-  const url = \`https://quote-api.jup.ag/v6/quote?inputMint=\${inputMint}&outputMint=\${outputMint}&amount=\${amount}&slippageBps=\${slippageBps}&onlyDirectRoutes=false\`;
+  const url = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=false`;
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(\`Jupiter Quote API Hatası: \${response.statusText}\`);
+      throw new Error(`Jupiter Quote API Hatası: ${response.statusText}`);
     }
     return await response.json();
   } catch (error) {
@@ -258,7 +199,7 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
     });
 
     if (!response.ok) {
-      throw new Error(\`Jupiter Swap API Hatası: \${response.statusText}\`);
+      throw new Error(`Jupiter Swap API Hatası: ${response.statusText}`);
     }
 
     const { swapTransaction } = await response.json();
@@ -302,7 +243,7 @@ async function sendTransactionToJito(signedTx: VersionedTransaction) {
  * Ana Arbitraj Tarama Fonksiyonu
  */
 async function checkArbitrage() {
-  console.log(\`\\n🔍 [\${new Date().toLocaleTimeString()}] Arbitraj fırsatı taranıyor...\`);
+  console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Arbitraj fırsatı taranıyor...`);
   
   // 1. ADIM: Token A -> Token B fiyatını sorgula
   const route1 = await getJupiterQuote(
@@ -316,7 +257,7 @@ async function checkArbitrage() {
 
   const expectedTokenBAmount = route1.outAmount;
   const tokenBAmountHuman = Number(expectedTokenBAmount) / (10 ** CONFIG.INTER_DECIMALS);
-  console.log(\`   1. Yol: \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN} ➔ \${tokenBAmountHuman.toFixed(4)} \${CONFIG.INTER_TOKEN}\`);
+  console.log(`   1. Yol: ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN} ➔ ${tokenBAmountHuman.toFixed(4)} ${CONFIG.INTER_TOKEN}`);
 
   // 2. ADIM: Token B -> Token A (Geri Dönüş) fiyatını sorgula
   const route2 = await getJupiterQuote(
@@ -336,29 +277,29 @@ async function checkArbitrage() {
   const profitHuman = finalAmountHuman - CONFIG.TRADE_AMOUNT;
   const profitPct = (profitHuman / CONFIG.TRADE_AMOUNT) * 100;
 
-  console.log(\`   2. Yol: \${tokenBAmountHuman.toFixed(4)} \${CONFIG.INTER_TOKEN} ➔ \${finalAmountHuman.toFixed(6)} \${CONFIG.START_TOKEN}\`);
+  console.log(`   2. Yol: ${tokenBAmountHuman.toFixed(4)} ${CONFIG.INTER_TOKEN} ➔ ${finalAmountHuman.toFixed(6)} ${CONFIG.START_TOKEN}`);
   
   if (profitHuman > 0) {
-    console.log(\`   📈 Brüt Sonuç: +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\`);
+    console.log(`   📈 Brüt Sonuç: +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})`);
   } else {
-    console.log(\`   📉 Brüt Sonuç: \${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\`);
+    console.log(`   📉 Brüt Sonuç: ${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})`);
   }
 
   // 3. ADIM: Kârlılık kontrolü
   if (profitPct >= CONFIG.MIN_PROFIT_PCT) {
-    console.log(\`   🎉 FIRSAT BULUNDU! Hedef kâr (%\${CONFIG.MIN_PROFIT_PCT}) aşıldı. İşlemler sırayla tetikleniyor...\`);
+    console.log(`   🎉 FIRSAT BULUNDU! Hedef kâr (%${CONFIG.MIN_PROFIT_PCT}) aşıldı. İşlemler sırayla tetikleniyor...`);
     
     try {
       // Yol 1 İşlemi
-      console.log(\"   [1/4] İlk takas işlemi oluşturuluyor...\");
+      console.log("   [1/4] İlk takas işlemi oluşturuluyor...");
       const swapTx1Base64 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
       
       // Yol 2 İşlemi
-      console.log(\"   [2/4] İkinci takas işlemi oluşturuluyor...\");
+      console.log("   [2/4] İkinci takas işlemi oluşturuluyor...");
       const swapTx2Base64 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
 
       if (!swapTx1Base64 || !swapTx2Base64) {
-        console.log(\"   ❌ İşlemler oluşturulamadı. İptal ediliyor.\");
+        console.log("   ❌ İşlemler oluşturulamadı. İptal ediliyor.");
         return;
       }
 
@@ -374,37 +315,37 @@ async function checkArbitrage() {
       tx1.sign([wallet]);
       tx2.sign([wallet]);
 
-      console.log(\"   [3/4] İşlemler imzalandı. Ağa gönderiliyor...\");
+      console.log("   [3/4] İşlemler imzalandı. Ağa gönderiliyor...");
 
       if (CONFIG.USE_JITO) {
-        console.log(\"   [JITO] İşlemler Jito Blok Motoruna bundle olarak gönderiliyor (MEV koruması aktif)...\");
+        console.log("   [JITO] İşlemler Jito Blok Motoruna bundle olarak gönderiliyor (MEV koruması aktif)...");
         // Not: Gerçek dairesel arbitrajda iki swap işlemi Jito Bundle içinde tek seferde gönderilerek atomiklik sağlanır.
         const res1 = await sendTransactionToJito(tx1);
         const res2 = await sendTransactionToJito(tx2);
-        console.log(\"   [JITO] Yanıt:\", JSON.stringify({ res1, res2 }));
-        console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
-        await sendTelegramNotification(\`🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)\`);
+        console.log("   [JITO] Yanıt:", JSON.stringify({ res1, res2 }));
+        console.log("   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!");
+        await sendTelegramNotification(`🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\n\n💸 *Rota:* ${CONFIG.START_TOKEN} ➔ ${CONFIG.INTER_TOKEN} ➔ ${CONFIG.START_TOKEN}\n💵 *Sermaye:* ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}\n📈 *Elde Edilen Net Kâr:* +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)`);
       } else {
         // Doğrudan RPC üzerinden gönder
         const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
-        console.log(\"   🚀 İşlem 1 Gönderildi. İmza:\", sig1);
+        console.log("   🚀 İşlem 1 Gönderildi. İmza:", sig1);
         
         const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
-        console.log(\"   🚀 İşlem 2 Gönderildi. İmza:\", sig2);
+        console.log("   🚀 İşlem 2 Gönderildi. İmza:", sig2);
 
         // Onay bekle
-        console.log(\"   [4/4] İşlemlerin ağda onaylanması bekleniyor...\");
+        console.log("   [4/4] İşlemlerin ağda onaylanması bekleniyor...");
         await connection.confirmTransaction(sig1, "confirmed");
         await connection.confirmTransaction(sig2, "confirmed");
-        console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
-        await sendTelegramNotification(\`🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/\${sig1}\\n🔗 *Tx2:* https://solscan.io/tx/\${sig2}\`);
+        console.log("   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!");
+        await sendTelegramNotification(`🔔 *SOLArb ARBİTRAJ BAŞARILI!*\n\n💸 *Rota:* ${CONFIG.START_TOKEN} ➔ ${CONFIG.INTER_TOKEN} ➔ ${CONFIG.START_TOKEN}\n💵 *Sermaye:* ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}\n📈 *Elde Edilen Net Kâr:* +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})\n🛡️ *Jito MEV Koruması:* Pasif\n🔗 *Tx1:* https://solscan.io/tx/${sig1}\n🔗 *Tx2:* https://solscan.io/tx/${sig2}`);
       }
       
     } catch (err) {
-      console.error(\"   ❌ Arbitraj yürütülürken kritik hata:\", err.message);
+      console.error("   ❌ Arbitraj yürütülürken kritik hata:", err.message);
     }
   } else {
-    console.log(\`   ⏱️ Fırsat yetersiz. Minimum kâr limiti (%\${CONFIG.MIN_PROFIT_PCT}) altında. Pas geçildi.\`);
+    console.log(`   ⏱️ Fırsat yetersiz. Minimum kâr limiti (%${CONFIG.MIN_PROFIT_PCT}) altında. Pas geçildi.`);
   }
 }
 
@@ -412,12 +353,12 @@ async function checkArbitrage() {
 async function main() {
   console.log("==================================================");
   console.log("🚀 SOLArb BAŞLATILIYOR...");
-  console.log(\`📌 Başlangıç Varlığı: \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\`);
-  console.log(\`📌 Ara Birim Varlık: \${CONFIG.INTER_TOKEN}\`);
-  console.log(\`📌 Hedef Minimum Kâr: %\${CONFIG.MIN_PROFIT_PCT}\`);
-  console.log(\`📌 Slipaj Toleransı: %\${CONFIG.SLIPPAGE_BPS / 100}\`);
-  console.log(\`📌 Tarama Periyodu: \${CONFIG.SCAN_INTERVAL / 1000} saniye\`);
-  console.log(\`📌 Jito MEV Koruması: \${CONFIG.USE_JITO ? "AKTİF" : "PASİF"}\`);
+  console.log(`📌 Başlangıç Varlığı: ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}`);
+  console.log(`📌 Ara Birim Varlık: ${CONFIG.INTER_TOKEN}`);
+  console.log(`📌 Hedef Minimum Kâr: %${CONFIG.MIN_PROFIT_PCT}`);
+  console.log(`📌 Slipaj Toleransı: %${CONFIG.SLIPPAGE_BPS / 100}`);
+  console.log(`📌 Tarama Periyodu: ${CONFIG.SCAN_INTERVAL / 1000} saniye`);
+  console.log(`📌 Jito MEV Koruması: ${CONFIG.USE_JITO ? "AKTİF" : "PASİF"}`);
   console.log("==================================================");
 
   // İlk taramayı başlat
@@ -436,5 +377,3 @@ async function main() {
 main().catch((err) => {
   console.error("Uygulama başlatma hatası:", err);
 });
-`;
-}
