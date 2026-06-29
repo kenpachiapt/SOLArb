@@ -16,6 +16,29 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Helper to resolve paths dynamically depending on where PM2/node is started
+  const getPaths = () => {
+    const cwd = process.cwd();
+    // Check if we are already inside the SOLArb folder
+    const isInsideSOLArb = path.basename(cwd).toLowerCase() === "solarb";
+
+    let folderPath = cwd;
+    if (!isInsideSOLArb) {
+      folderPath = path.join(cwd, "SOLArb");
+    }
+
+    const botFile = path.join(folderPath, "bot.ts");
+    const configFile = path.join(folderPath, "config.json");
+    const relativeBotPath = isInsideSOLArb ? "bot.ts" : "SOLArb/bot.ts";
+
+    return {
+      folderPath,
+      botFile,
+      configFile,
+      relativeBotPath
+    };
+  };
+
   app.post("/api/save-bot", (req, res) => {
     try {
       const { code } = req.body;
@@ -23,18 +46,14 @@ async function startServer() {
         return res.status(400).json({ error: "Kod parametresi eksik." });
       }
 
-      // Create SOLArb directory if it does not exist
-      const folderPath = path.join(process.cwd(), "SOLArb");
-      if (!fs.existsSync(folderPath)) {
-        fs.mkdirSync(folderPath, { recursive: true });
+      const paths = getPaths();
+      if (!fs.existsSync(paths.folderPath)) {
+        fs.mkdirSync(paths.folderPath, { recursive: true });
       }
 
-      // Write bot.ts to SOLArb directory
-      const filePath = path.join(folderPath, "bot.ts");
-      fs.writeFileSync(filePath, code, "utf8");
-
-      console.log(`[SOLArb] bot.ts dosyası başarıyla sunucuya kaydedildi: ${filePath}`);
-      res.json({ success: true, path: "SOLArb/bot.ts" });
+      fs.writeFileSync(paths.botFile, code, "utf8");
+      console.log(`[SOLArb] bot.ts dosyası başarıyla sunucuya kaydedildi: ${paths.botFile}`);
+      res.json({ success: true, path: paths.relativeBotPath });
     } catch (error: any) {
       console.error("bot.ts kaydedilirken hata oluştu:", error);
       res.status(500).json({ error: error.message || "Dosya yazma hatası." });
@@ -44,14 +63,13 @@ async function startServer() {
   app.post("/api/save-config", (req, res) => {
     try {
       const config = req.body;
-      const folderPath = path.join(process.cwd(), "SOLArb");
-      if (!fs.existsSync(folderPath)) {
-        fs.mkdirSync(folderPath, { recursive: true });
+      const paths = getPaths();
+      if (!fs.existsSync(paths.folderPath)) {
+        fs.mkdirSync(paths.folderPath, { recursive: true });
       }
-      const filePath = path.join(folderPath, "config.json");
-      fs.writeFileSync(filePath, JSON.stringify(config, null, 2), "utf8");
+      fs.writeFileSync(paths.configFile, JSON.stringify(config, null, 2), "utf8");
 
-      console.log(`[SOLArb] config.json dosyası başarıyla sunucuya kaydedildi: ${filePath}`);
+      console.log(`[SOLArb] config.json dosyası başarıyla sunucuya kaydedildi: ${paths.configFile}`);
       res.json({ success: true });
     } catch (error: any) {
       console.error("config.json kaydedilirken hata oluştu:", error);
@@ -61,9 +79,9 @@ async function startServer() {
 
   app.get("/api/load-config", (req, res) => {
     try {
-      const filePath = path.join(process.cwd(), "SOLArb", "config.json");
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, "utf8");
+      const paths = getPaths();
+      if (fs.existsSync(paths.configFile)) {
+        const data = fs.readFileSync(paths.configFile, "utf8");
         res.json({ success: true, config: JSON.parse(data) });
       } else {
         res.json({ success: false, message: "Henüz kaydedilmiş ayar bulunamadı." });
@@ -92,8 +110,8 @@ async function startServer() {
         return res.json({ success: false, error: "Bot zaten çalışıyor." });
       }
 
-      const botPath = path.join(process.cwd(), "SOLArb", "bot.ts");
-      if (!fs.existsSync(botPath)) {
+      const paths = getPaths();
+      if (!fs.existsSync(paths.botFile)) {
         return res.json({
           success: false,
           error: "Öncelikle 'Sunucuya Kaydet' butonuna basarak bot.ts dosyasını sunucuya yazmalısınız."
@@ -104,18 +122,18 @@ async function startServer() {
       
       // Determine the best execution method
       let command = "npx";
-      let args = ["-y", "tsx", "SOLArb/bot.ts"];
+      let args = ["-y", "tsx", paths.relativeBotPath];
       
       const localTsxPath = path.join(process.cwd(), "node_modules", ".bin", "tsx");
       const localTsxMjs = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
 
       if (fs.existsSync(localTsxPath)) {
         command = localTsxPath;
-        args = ["SOLArb/bot.ts"];
+        args = [paths.relativeBotPath];
         addBotLog(`📌 Yerel TSX ikilisi tespit edildi: ${command}`, "info");
       } else if (fs.existsSync(localTsxMjs)) {
         command = process.execPath; // Absolute path to node
-        args = [localTsxMjs, "SOLArb/bot.ts"];
+        args = [localTsxMjs, paths.relativeBotPath];
         addBotLog(`📌 Yerel TSX cli modülü tespit edildi, node ile çalıştırılıyor: ${command}`, "info");
       } else {
         addBotLog(`📌 Yerel TSX bulunamadı, npx -y tsx ile çalıştırılıyor...`, "info");
