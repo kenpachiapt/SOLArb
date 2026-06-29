@@ -51,6 +51,9 @@ const CONFIG = {
   USE_JITO: true,
   JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
 
+  // Jupiter API Adresi (Özel API kullanmak istiyorsanız girin, boş bırakırsanız otomatik yedekli rotasyon yapılır)
+  JUPITER_API_URL: "",
+
   // Telegram Bildirim Ayarları
   TELEGRAM_TOKEN: "",
   TELEGRAM_CHAT_ID: ""
@@ -87,6 +90,7 @@ try {
         if (fileData.telegramToken) CONFIG.TELEGRAM_TOKEN = fileData.telegramToken;
         if (fileData.telegramChatId) CONFIG.TELEGRAM_CHAT_ID = fileData.telegramChatId;
         if (fileData.privateKey) privateKeyString = fileData.privateKey;
+        if (fileData.jupiterApiUrl !== undefined) CONFIG.JUPITER_API_URL = fileData.jupiterApiUrl;
         
         console.log("📂 Konfigürasyon başarıyla config.json dosyasından yüklendi: " + p);
         break;
@@ -102,6 +106,7 @@ if (process.env.SOLANA_RPC_URL) CONFIG.RPC_URL = process.env.SOLANA_RPC_URL;
 if (process.env.SOLANA_PRIVATE_KEY) privateKeyString = process.env.SOLANA_PRIVATE_KEY;
 if (process.env.TELEGRAM_TOKEN) CONFIG.TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 if (process.env.TELEGRAM_CHAT_ID) CONFIG.TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+if (process.env.JUPITER_API_URL) CONFIG.JUPITER_API_URL = process.env.JUPITER_API_URL;
 
 // RPC URL Güvenlik Kontrolü ve Fallback
 if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.startsWith("http")) {
@@ -162,52 +167,75 @@ async function sendTelegramNotification(message: string) {
   }
 }
 
+// Entegre Jupiter API İletişim Durumu ve Rotalama Noktası
+let ACTIVE_JUPITER_API = CONFIG.JUPITER_API_URL || "https://quote-api.jup.ag/v6";
+
 /**
  * Jupiter API üzerinden teklif (quote) alır
  */
 async function getJupiterQuote(inputMint: string, outputMint: string, amount: number, slippageBps: number) {
-  const url = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=false`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Jupiter Quote API Hatası: ${response.statusText}`);
+  // Eğer özel bir API adresi verilmişse sadece onu kullan, yoksa otomatik yedekli listeyi tara
+  const endpoints = CONFIG.JUPITER_API_URL 
+    ? [CONFIG.JUPITER_API_URL] 
+    : [ACTIVE_JUPITER_API, "https://quote-api.jup.ag/v6", "https://api.jup.ag/v6"];
+
+  for (const endpoint of endpoints) {
+    const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
+    const url = `${cleanEndpoint}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=false`;
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        // Eğer bu adres çalıştıysa ve aktif olandan farklıysa, aktif adresi güncelle
+        if (!CONFIG.JUPITER_API_URL && endpoint !== ACTIVE_JUPITER_API) {
+          ACTIVE_JUPITER_API = endpoint;
+          console.log(`🔄 JUPITER_API adresi otomatik olarak çalışan adrese çevrildi: ${ACTIVE_JUPITER_API}`);
+        }
+        return await response.json();
+      }
+      console.warn(`⚠️ Jupiter API Hatası (${endpoint}): ${response.statusText}`);
+    } catch (error) {
+      console.warn(`⚠️ Jupiter API bağlantısı başarısız (${endpoint}): ${error.message}`);
     }
-    return await response.json();
-  } catch (error) {
-    console.error("⚠️ Fiyat teklifi alınırken hata oluştu:", error.message);
-    return null;
   }
+  console.error("❌ HATA: Tüm Jupiter API uç noktaları başarısız oldu (DNS/Ağ hatası olabilir).");
+  return null;
 }
 
 /**
  * Teklifi (quote) Solana işlemine (Transaction) dönüştürür
  */
 async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
-  const url = "https://quote-api.jup.ag/v6/swap";
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quoteResponse,
-        userPublicKey,
-        wrapAndUnwrapSol: true,
-        // İşlem önceliği ve ücret ayarları
-        computeUnitPriceMicroLamports: Math.round((CONFIG.PRIORITY_FEE_SOL * 10**9 * 10**6) / 1400000), 
-        dynamicComputeUnitLimit: true
-      })
-    });
+  const endpoints = CONFIG.JUPITER_API_URL 
+    ? [CONFIG.JUPITER_API_URL] 
+    : [ACTIVE_JUPITER_API, "https://quote-api.jup.ag/v6", "https://api.jup.ag/v6"];
 
-    if (!response.ok) {
-      throw new Error(`Jupiter Swap API Hatası: ${response.statusText}`);
+  for (const endpoint of endpoints) {
+    const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
+    const url = `${cleanEndpoint}/swap`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quoteResponse,
+          userPublicKey,
+          wrapAndUnwrapSol: true,
+          // İşlem önceliği ve ücret ayarları
+          computeUnitPriceMicroLamports: Math.round((CONFIG.PRIORITY_FEE_SOL * 10**9 * 10**6) / 1400000), 
+          dynamicComputeUnitLimit: true
+        })
+      });
+
+      if (response.ok) {
+        const { swapTransaction } = await response.json();
+        return swapTransaction;
+      }
+      console.warn(`⚠️ Jupiter Swap API Hatası (${endpoint}): ${response.statusText}`);
+    } catch (error) {
+      console.warn(`⚠️ Jupiter Swap API bağlantısı başarısız (${endpoint}): ${error.message}`);
     }
-
-    const { swapTransaction } = await response.json();
-    return swapTransaction;
-  } catch (error) {
-    console.error("⚠️ İşlem oluşturulurken hata oluştu:", error.message);
-    return null;
   }
+  return null;
 }
 
 /**

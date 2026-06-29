@@ -90,6 +90,7 @@ export default function App() {
     const saved = localStorage.getItem('solarb_scan_interval');
     return saved !== null ? Number(saved) : 5;
   });
+  const [jupiterApiUrl, setJupiterApiUrl] = useState<string>(() => localStorage.getItem('solarb_jupiter_api_url') || '');
 
   // Save configurations to localStorage automatically
   useEffect(() => {
@@ -102,7 +103,8 @@ export default function App() {
     localStorage.setItem('solarb_use_jito', String(useJito));
     localStorage.setItem('solarb_priority_fee_sol', String(priorityFeeSol));
     localStorage.setItem('solarb_scan_interval', String(scanInterval));
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval]);
+    localStorage.setItem('solarb_jupiter_api_url', jupiterApiUrl);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl]);
 
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
@@ -231,6 +233,7 @@ export default function App() {
           if (cfg.privateKey) setPrivateKey(cfg.privateKey);
           if (cfg.panelUsername) setPanelUsername(cfg.panelUsername);
           if (cfg.panelPassword) setPanelPassword(cfg.panelPassword);
+          if (cfg.jupiterApiUrl) setJupiterApiUrl(cfg.jupiterApiUrl);
         }
       } catch (err) {
         console.error("Sunucudan konfigürasyon yüklenirken hata:", err);
@@ -367,9 +370,10 @@ export default function App() {
       scanIntervalMs: scanInterval * 1000,
       telegramToken,
       telegramChatId,
-      privateKey
+      privateKey,
+      jupiterApiUrl
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -415,7 +419,8 @@ export default function App() {
             telegramChatId,
             privateKey,
             panelUsername,
-            panelPassword
+            panelPassword,
+            jupiterApiUrl
           })
         });
 
@@ -864,6 +869,21 @@ export default function App() {
                   onChange={(e) => setRpcUrl(e.target.value)}
                   className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                   placeholder="https://api.mainnet-beta.solana.com"
+                />
+              </div>
+
+              {/* Jupiter API URL input */}
+              <div className="space-y-2">
+                <label className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold flex items-center justify-between">
+                  <span>Jupiter API Adresi</span>
+                  <span className="text-[9px] font-mono text-zinc-500">Yedekli / Özel</span>
+                </label>
+                <input
+                  type="text"
+                  value={jupiterApiUrl}
+                  onChange={(e) => setJupiterApiUrl(e.target.value)}
+                  className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                  placeholder="Yedekli rotasyon için boş bırakın"
                 />
               </div>
 
@@ -2081,6 +2101,17 @@ export default function App() {
                           className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Yedekli Jupiter API Adresi (İsteğe Bağlı)</label>
+                      <input
+                        type="text"
+                        value={jupiterApiUrl}
+                        onChange={(e) => setJupiterApiUrl(e.target.value)}
+                        placeholder="Yedekli listeye eklemek veya değiştirmek için girin (örn. https://quote-api.jup.ag/v6)"
+                        className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
                     </div>
 
                     <p className="text-[11px] text-zinc-400 leading-relaxed">
