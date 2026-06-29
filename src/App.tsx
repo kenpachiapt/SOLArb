@@ -63,15 +63,46 @@ interface ArbitrageTx {
 
 export default function App() {
   // Config States
-  const [rpcUrl, setRpcUrl] = useState('https://api.mainnet-beta.solana.com');
-  const [startToken, setStartToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK'>('SOL');
-  const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF'>('USDC');
-  const [amount, setAmount] = useState<number>(5);
-  const [minProfitPct, setMinProfitPct] = useState<number>(0.5);
-  const [slippagePct, setSlippagePct] = useState<number>(0.2);
-  const [useJito, setUseJito] = useState<boolean>(true);
-  const [priorityFeeSol, setPriorityFeeSol] = useState<number>(0.0001);
-  const [scanInterval, setScanInterval] = useState<number>(5); // in seconds
+  const [rpcUrl, setRpcUrl] = useState<string>(() => localStorage.getItem('solarb_rpc_url') || 'https://api.mainnet-beta.solana.com');
+  const [startToken, setStartToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK'>(() => (localStorage.getItem('solarb_start_token') as any) || 'SOL');
+  const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF'>(() => (localStorage.getItem('solarb_inter_token') as any) || 'USDC');
+  const [amount, setAmount] = useState<number>(() => {
+    const saved = localStorage.getItem('solarb_amount');
+    return saved !== null ? Number(saved) : 5;
+  });
+  const [minProfitPct, setMinProfitPct] = useState<number>(() => {
+    const saved = localStorage.getItem('solarb_min_profit_pct');
+    return saved !== null ? Number(saved) : 0.5;
+  });
+  const [slippagePct, setSlippagePct] = useState<number>(() => {
+    const saved = localStorage.getItem('solarb_slippage_pct');
+    return saved !== null ? Number(saved) : 0.2;
+  });
+  const [useJito, setUseJito] = useState<boolean>(() => {
+    const saved = localStorage.getItem('solarb_use_jito');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [priorityFeeSol, setPriorityFeeSol] = useState<number>(() => {
+    const saved = localStorage.getItem('solarb_priority_fee_sol');
+    return saved !== null ? Number(saved) : 0.0001;
+  });
+  const [scanInterval, setScanInterval] = useState<number>(() => {
+    const saved = localStorage.getItem('solarb_scan_interval');
+    return saved !== null ? Number(saved) : 5;
+  });
+
+  // Save configurations to localStorage automatically
+  useEffect(() => {
+    localStorage.setItem('solarb_rpc_url', rpcUrl);
+    localStorage.setItem('solarb_start_token', startToken);
+    localStorage.setItem('solarb_inter_token', interToken);
+    localStorage.setItem('solarb_amount', String(amount));
+    localStorage.setItem('solarb_min_profit_pct', String(minProfitPct));
+    localStorage.setItem('solarb_slippage_pct', String(slippagePct));
+    localStorage.setItem('solarb_use_jito', String(useJito));
+    localStorage.setItem('solarb_priority_fee_sol', String(priorityFeeSol));
+    localStorage.setItem('solarb_scan_interval', String(scanInterval));
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval]);
 
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
