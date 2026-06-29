@@ -23,7 +23,8 @@ import {
   DollarSign,
   Lock,
   KeyRound,
-  Send
+  Send,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateArbitrageCode, TOKEN_MINTS, TOKEN_DECIMALS } from './arbitrageCode';
@@ -94,6 +95,10 @@ export default function App() {
   // Telegram Testing States
   const [telegramTestStatus, setTelegramTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [telegramTestMessage, setTelegramTestMessage] = useState<string>('');
+
+  // Save Server States
+  const [saveServerStatus, setSaveServerStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [saveServerMessage, setSaveServerMessage] = useState<string>('');
 
   // Prices State
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
@@ -236,6 +241,32 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     addLog(`📥 Özelleştirilmiş bot.ts dosyası bilgisayarınıza indirildi!`, 'info');
+  };
+
+  // Save Code to Server
+  const handleSaveToServer = async () => {
+    setSaveServerStatus('saving');
+    setSaveServerMessage('');
+    try {
+      const response = await fetch('/api/save-bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: generatedCode })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setSaveServerStatus('success');
+        setSaveServerMessage('Başarılı! SOLArb/bot.ts dosyası kaydedildi.');
+        addLog('💾 bot.ts kod dosyası sunucudaki /SOLArb/bot.ts konumuna kaydedildi.', 'success');
+        setTimeout(() => setSaveServerStatus('idle'), 4000);
+      } else {
+        setSaveServerStatus('error');
+        setSaveServerMessage(data.error || 'Kaydetme başarısız oldu.');
+      }
+    } catch (err: any) {
+      setSaveServerStatus('error');
+      setSaveServerMessage(err.message || 'Sunucu bağlantı hatası.');
+    }
   };
 
   // Test Telegram Connection
@@ -1329,21 +1360,42 @@ export default function App() {
                       Aşağıdaki kod, soldaki panodan girdiğiniz parametrelerle (<span className="text-indigo-400 font-mono">{startToken}➔{interToken}</span>, %{minProfitPct} min kâr, {useJito ? 'Jito aktif' : 'Jito pasif'}) otomatik güncellenir.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={handleCopyCode}
-                      className="bg-[#0B0B0D] hover:bg-[#1E1E22] text-zinc-200 text-xs px-4 py-2 rounded-none border border-[#222226] transition-all flex items-center gap-1.5 cursor-pointer font-mono"
-                    >
-                      {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      {copied ? 'Kopyalandı!' : 'KODU KOPYALA'}
-                    </button>
-                    <button
-                      onClick={handleDownloadCode}
-                      className="bg-indigo-600 hover:bg-indigo-550 text-white text-xs px-4 py-2 rounded-none border border-indigo-500 hover:border-indigo-400 transition-all flex items-center gap-1.5 cursor-pointer font-bold tracking-wider"
-                    >
-                      <Download className="w-4 h-4" />
-                      İNDİR (bot.ts)
-                    </button>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCopyCode}
+                        className="bg-[#0B0B0D] hover:bg-[#1E1E22] text-zinc-200 text-xs px-4 py-2 rounded-none border border-[#222226] transition-all flex items-center gap-1.5 cursor-pointer font-mono"
+                      >
+                        {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        {copied ? 'Kopyalandı!' : 'KODU KOPYALA'}
+                      </button>
+                      <button
+                        onClick={handleSaveToServer}
+                        disabled={saveServerStatus === 'saving'}
+                        className="bg-emerald-600 hover:bg-emerald-550 disabled:bg-emerald-800 text-white text-xs px-4 py-2 rounded-none border border-emerald-500 hover:border-emerald-400 transition-all flex items-center gap-1.5 cursor-pointer font-bold tracking-wider"
+                      >
+                        {saveServerStatus === 'saving' ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                        SUNUCUYA KAYDET (SOLArb)
+                      </button>
+                      <button
+                        onClick={handleDownloadCode}
+                        className="bg-indigo-600 hover:bg-indigo-550 text-white text-xs px-4 py-2 rounded-none border border-indigo-500 hover:border-indigo-400 transition-all flex items-center gap-1.5 cursor-pointer font-bold tracking-wider"
+                      >
+                        <Download className="w-4 h-4" />
+                        İNDİR (bot.ts)
+                      </button>
+                    </div>
+                    {saveServerStatus !== 'idle' && (
+                      <span className={`text-[11px] font-mono font-bold ${
+                        saveServerStatus === 'success' ? 'text-emerald-400' : saveServerStatus === 'error' ? 'text-rose-400' : 'text-zinc-400'
+                      }`}>
+                        {saveServerMessage}
+                      </span>
+                    )}
                   </div>
                 </div>
 

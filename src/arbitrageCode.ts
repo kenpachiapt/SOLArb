@@ -60,7 +60,7 @@ export function generateArbitrageCode(options: BotOptions): string {
 
   return `/**
  * ====================================================================
- * SOLANA ARBITRAJT BOTU (ÖZELLEŞTİRİLMİŞ ÜRETİM TASLAĞI)
+ * SOLArb - DAİRESEL ARBİTRAJ BOTU (ÖZELLEŞTİRİLMİŞ ÜRETİM TASLAĞI)
  * ====================================================================
  * Bu kod, Jupiter v6 API'sini ve Solana Web3.js kütüphanesini kullanarak
  * iki yönlü/dairesel arbitraj (Token A -> Token B -> Token A) fırsatlarını tarar.
@@ -328,7 +328,7 @@ async function checkArbitrage() {
         const res2 = await sendTransactionToJito(tx2);
         console.log(\"   [JITO] Yanıt:\", JSON.stringify({ res1, res2 }));
         console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
-        await sendTelegramNotification(\`🔔 *SOLANA ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)\`);
+        await sendTelegramNotification(\`🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)\`);
       } else {
         // Doğrudan RPC üzerinden gönder
         const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
@@ -342,7 +342,7 @@ async function checkArbitrage() {
         await connection.confirmTransaction(sig1, "confirmed");
         await connection.confirmTransaction(sig2, "confirmed");
         console.log(\"   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!\");
-        await sendTelegramNotification(\`🔔 *SOLANA ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/\${sig1}\\n🔗 *Tx2:* https://solscan.io/tx/\${sig2}\`);
+        await sendTelegramNotification(\`🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* \${CONFIG.START_TOKEN} ➔ \${CONFIG.INTER_TOKEN} ➔ \${CONFIG.START_TOKEN}\\n💵 *Sermaye:* \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\\n📈 *Elde Edilen Net Kâr:* +\${profitHuman.toFixed(6)} \${CONFIG.START_TOKEN} (%\${profitPct.toFixed(3)})\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/\${sig1}\\n🔗 *Tx2:* https://solscan.io/tx/\${sig2}\`);
       }
       
     } catch (err) {
@@ -356,7 +356,7 @@ async function checkArbitrage() {
 // Botu başlat
 async function main() {
   console.log("==================================================");
-  console.log("🚀 SOLANA ARBITRAJT BOTU BAŞLATILIYOR...");
+  console.log("🚀 SOLArb BAŞLATILIYOR...");
   console.log(\`📌 Başlangıç Varlığı: \${CONFIG.TRADE_AMOUNT} \${CONFIG.START_TOKEN}\`);
   console.log(\`📌 Ara Birim Varlık: \${CONFIG.INTER_TOKEN}\`);
   console.log(\`📌 Hedef Minimum Kâr: %\${CONFIG.MIN_PROFIT_PCT}\`);

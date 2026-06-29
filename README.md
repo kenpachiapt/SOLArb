@@ -1,4 +1,4 @@
-# Solana Arbitraj Botu (Solana Arbitrage Bot) 🚀
+# SOLArb - Solana Arbitraj Botu (Solana Arbitrage Bot) 🚀
 
 Solana ağında yüksek hızda dairesel (circular) arbitraj fırsatlarını tespit eden ve Jito MEV korumasıyla otomatik olarak gerçekleştiren profesyonel, üretim kalitesinde bir arbitraj botu ve yapılandırma platformudur.
 
@@ -38,10 +38,9 @@ npm -v
 ```
 
 ### 3. Projeyi Sunucunuza Çekin / İndirin
-ZIP olarak indirdiğiniz veya GitHub repomuzdan kopyaladığınız dosyaları sunucuya aktarın. Git ile çekmek isterseniz:
+ZIP olarak indirdiğiniz veya GitHub repomuzdan kopyaladığınız dosyaları sunucuya aktarın. Klasör adını **SOLArb** yaptıysanız:
 ```bash
-git clone <buraya-olusturdugunuz-repo-linkini-yazın>
-cd solana-arbitrage-bot
+cd SOLArb
 ```
 
 ### 4. Bağımlılıkları Yükleyin
@@ -50,22 +49,37 @@ Solana Web3 kütüphaneleri, Jupiter SDK ve gerekli diğer tüm modülleri yükl
 npm install
 ```
 
-### 5. Web Arayüzünü Derleyin (Build)
-Uygulamanın web tabanlı simülatör panelini ve izleyicisini hazır hale getirmek için projeyi derleyin:
+### 5. Web Arayüzünü ve Sunucusunu Derleyin (Build)
+Uygulamanın web tabanlı simülatör panelini, canlı izleyicisini ve güvenli giriş sistemini sunucuya hazır hale getirmek için projeyi derleyin. Bu komut hem istemciyi (React) hem de arka plan Node sunucusunu (Express) derleyip tek bir paket haline getirir:
 ```bash
 npm run build
 ```
 
-### 6. PM2 Kurulumu (Sürekli ve Arka Planda Çalışması İçin)
-Terminali kapatsanız bile botun sunucuda 7/24 çalışmaya devam etmesi için PM2 yöneticisini küresel olarak yükleyin:
+### 6. PM2 Kurulumu (Yönetim Paneli ve Botun 7/24 Kesintisiz Çalışması İçin)
+Terminali kapatsanız bile web panelinin ve botun sunucuda 7/24 çalışmaya devam etmesi için PM2 yöneticisini küresel olarak yükleyin:
 ```bash
 sudo npm install -g pm2
 ```
 
-### 7. Botu PM2 ile Başlatın
-Arayüzden indirdiğiniz veya yapılandırdığınız `bot.ts` dosyasını PM2 ile arka planda çalıştırın:
+### 7. Sunucuyu ve Botu PM2 ile Başlatın
+
+#### A) Web Yönetim Panelini Başlatma (Tarayıcıdan Giriş İçin)
+Web arayüzüne tarayıcınızdan `http://<SUNUCU-IP-ADRESINIZ>:3000` adresi üzerinden erişmek için Express web sunucusunu PM2 ile arka planda başlatın:
 ```bash
-pm2 start "npx tsx src/bot.ts" --name solana-arbitrage-bot
+pm2 start npm --name "solana-web-panel" -- start
+```
+*Not: Eğer sunucunuzda dışarıdan 3000 portuna erişim kapalıysa, Ubuntu güvenlik duvarından (UFW) bu portu açmanız gerekir:*
+```bash
+sudo ufw allow 3000/tcp
+```
+*Artık tarayıcınızdan `http://84.247.165.65:3000` yazarak kullanıcı adı ve şifrenizle giriş yapabilirsiniz.*
+
+#### B) Arka Plan Arbitraj Botunu Başlatma (Güvenli ve Doğrudan Sunucudan!)
+Bilgisayarınıza `bot.ts` dosyasını indirip düzenleme ve tekrar yükleme zahmetinden kurtulmak için, Web Panelindeki kod sekmesinde bulunan **"SUNUCUYA KAYDET (SOLArb)"** butonuna tıklayın. Bu işlem, yapılandırdığınız kodu doğrudan sunucunuzdaki `SOLArb/bot.ts` konumuna kaydedecektir!
+
+Ardından botu PM2 ile 7/24 kesintisiz çalışacak şekilde başlatın:
+```bash
+pm2 start "npx tsx SOLArb/bot.ts" --name "SOLArb"
 ```
 
 ### 8. Sunucu Yeniden Başlatma Koruması
