@@ -105,7 +105,13 @@ async function startServer() {
       // Spawn TSX process to run the TypeScript bot
       botProcess = spawn("npx", ["tsx", "SOLArb/bot.ts"], {
         cwd: process.cwd(),
+        shell: true,
         env: { ...process.env, NODE_ENV: "production" }
+      });
+
+      botProcess.on("error", (err: any) => {
+        console.error("Bot spawn error:", err);
+        addBotLog(`❌ Başlatma Hatası: ${err.message}`, "error");
       });
 
       botProcess.stdout?.on("data", (data: any) => {
