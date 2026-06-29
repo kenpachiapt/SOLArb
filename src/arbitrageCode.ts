@@ -15,6 +15,7 @@ interface BotOptions {
   scanIntervalMs: number;
   telegramToken?: string;
   telegramChatId?: string;
+  privateKey?: string;
 }
 
 export const TOKEN_MINTS = {
@@ -47,7 +48,8 @@ export function generateArbitrageCode(options: BotOptions): string {
     priorityFeeSol,
     scanIntervalMs,
     telegramToken,
-    telegramChatId
+    telegramChatId,
+    privateKey
   } = options;
 
   const startMint = TOKEN_MINTS[startToken] || TOKEN_MINTS.SOL;
@@ -118,7 +120,7 @@ const CONFIG = {
 
 // Cüzdan Kurulumu
 let wallet: Keypair;
-const privateKeyString = process.env.SOLANA_PRIVATE_KEY;
+const privateKeyString = process.env.SOLANA_PRIVATE_KEY || "${privateKey || ''}";
 
 if (!privateKeyString) {
   console.error("❌ HATA: SOLANA_PRIVATE_KEY ortam değişkeni tanımlanmamış!");

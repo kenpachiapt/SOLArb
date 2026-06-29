@@ -24,7 +24,8 @@ import {
   Lock,
   KeyRound,
   Send,
-  Save
+  Save,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateArbitrageCode, TOKEN_MINTS, TOKEN_DECIMALS } from './arbitrageCode';
@@ -75,6 +76,9 @@ export default function App() {
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
   const [telegramChatId, setTelegramChatId] = useState<string>(() => localStorage.getItem('telegram_chat_id') || '');
+
+  // Solana Wallet Private Key
+  const [privateKey, setPrivateKey] = useState<string>(() => localStorage.getItem('solana_private_key') || '');
 
   // Authentication & Panel Security States
   const [panelUsername, setPanelUsername] = useState<string>(() => localStorage.getItem('panel_username') || 'admin');
@@ -227,9 +231,10 @@ export default function App() {
       priorityFeeSol,
       scanIntervalMs: scanInterval * 1000,
       telegramToken,
-      telegramChatId
+      telegramChatId,
+      privateKey
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -1663,6 +1668,47 @@ export default function App() {
                             {telegramTestMessage}
                           </span>
                         )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Solana Wallet Credentials Card */}
+                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
+                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Wallet className="w-5 h-5 text-emerald-400" />
+                        <div>
+                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Solana Cüzdan Ayarları</h4>
+                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">İŞLEM İMZALAMA VE YETKİLENDİRME</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Cüzdan</span>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Cüzdan Özel Anahtarı (SOLANA_PRIVATE_KEY)</label>
+                        <input
+                          type="password"
+                          value={privateKey}
+                          onChange={(e) => {
+                            setPrivateKey(e.target.value);
+                            localStorage.setItem('solana_private_key', e.target.value);
+                          }}
+                          placeholder="Örn: Phantom dışa aktarılan base58 anahtarı veya [12, 34, 56...] dizi formatı"
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+
+                      <div className="p-4 bg-zinc-950/40 border border-[#222226] rounded-none space-y-2">
+                        <div className="flex items-center gap-2 text-amber-500">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span className="text-xs font-bold font-mono uppercase tracking-wide">Önemli Güvenlik Uyarısı</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
+                          Girdiğiniz özel anahtar kesinlikle hiçbir sunucuya gönderilmez. Sadece tarayıcınızın yerel hafızasında (<span className="text-indigo-400 font-mono">Local Storage</span>) saklanır ve ürettiğiniz <span className="text-emerald-400 font-mono">bot.ts</span> dosyasına yerleştirilir. 
+                          Eğer kodu bilgisayarınızda veya sunucunuzda <span className="text-emerald-400 font-mono">.env</span> dosyası ile çalıştırmak isterseniz, bu alanı boş bırakıp doğrudan <span className="text-indigo-400 font-mono">SOLANA_PRIVATE_KEY</span> ortam değişkenini kullanabilirsiniz.
+                        </p>
                       </div>
                     </div>
                   </div>
