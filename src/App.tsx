@@ -84,12 +84,16 @@ export default function App() {
   const [loginError, setLoginError] = useState<string>('');
 
   // UI States
-  const [activeTab, setActiveTab] = useState<'code' | 'guide' | 'risks'>('code');
+  const [activeTab, setActiveTab] = useState<'code' | 'guide' | 'risks' | 'settings'>('code');
   const [activeGuideStep, setActiveGuideStep] = useState<number>(0);
   const [copied, setCopied] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [simProfit, setSimProfit] = useState<number>(0);
   const [simTransactions, setSimTransactions] = useState<number>(0);
+
+  // Telegram Testing States
+  const [telegramTestStatus, setTelegramTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [telegramTestMessage, setTelegramTestMessage] = useState<string>('');
 
   // Prices State
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
@@ -232,6 +236,42 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     addLog(`📥 Özelleştirilmiş bot.ts dosyası bilgisayarınıza indirildi!`, 'info');
+  };
+
+  // Test Telegram Connection
+  const handleTestTelegram = async () => {
+    if (!telegramToken || !telegramChatId) {
+      setTelegramTestStatus('error');
+      setTelegramTestMessage('Lütfen önce Bot Token ve Sohbet (Chat) ID alanlarını doldurun.');
+      return;
+    }
+    setTelegramTestStatus('testing');
+    setTelegramTestMessage('');
+    
+    try {
+      const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: telegramChatId,
+          text: `🔔 *Solana Arbitraj Kontrol Paneli*\n\n✅ Tebrikler! Telegram bildirim botunuz başarıyla bağlandı.\n\n🤖 *Bot Durumu:* Aktif (Canlı Simülasyon)\n⚙️ *Kullanıcı:* ${panelUsername}\n🛰️ *RPC Sunucusu:* ${rpcUrl.substring(0, 30)}...`,
+          parse_mode: 'Markdown'
+        })
+      });
+      const data = await response.json();
+      if (data.ok) {
+        setTelegramTestStatus('success');
+        setTelegramTestMessage('Başarılı! Telegram botunuzdan telefonunuza bir test mesajı gönderildi.');
+        addLog('📱 Telegram bot bağlantısı başarıyla test edildi.', 'success');
+      } else {
+        setTelegramTestStatus('error');
+        setTelegramTestMessage(`Hata: ${data.description || 'API isteği başarısız.'}`);
+      }
+    } catch (err: any) {
+      setTelegramTestStatus('error');
+      setTelegramTestMessage(`Bağlantı hatası: ${err.message || 'Bilinmeyen bir hata oluştu.'}`);
+    }
   };
 
   // Copy Code to Clipboard
@@ -1253,8 +1293,19 @@ export default function App() {
               <ShieldAlert className="w-4 h-4 text-indigo-400" />
               Riskler ve İpuçları
             </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-2 rounded-none ${
+                activeTab === 'settings'
+                  ? 'border-indigo-500 text-white bg-indigo-500/5'
+                  : 'border-transparent text-zinc-400 hover:text-white hover:bg-[#121215]/50'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-indigo-400" />
+              Gelişmiş Bot Ayarları
+            </button>
           </div>
-          <span className="text-xs text-zinc-500 font-serif italic pr-2 hidden sm:inline">Tüm kodlar ve kılavuzlar Türkçe olarak hazırlanmıştır.</span>
+          <span className="text-xs text-zinc-500 font-serif italic pr-2 hidden md:inline">Tüm kodlar ve kılavuzlar Türkçe olarak hazırlanmıştır.</span>
         </div>
 
         {/* Tab Content Display */}
@@ -1468,6 +1519,254 @@ export default function App() {
                       <ExternalLink className="w-3.5 h-3.5 text-zinc-500" />
                     </a>
                   </div>
+                </div>
+
+              </motion.div>
+            )}
+
+            {/* TAB 4: ADVANCED SETTINGS AND PM2 GUIDELINES */}
+            {activeTab === 'settings' && (
+              <motion.div
+                key="settings-tab"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8"
+              >
+                {/* Left Column (8 cols): Configuration Panels */}
+                <div className="lg:col-span-8 space-y-6">
+                  
+                  {/* Telegram Notification Card */}
+                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
+                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Send className="w-5 h-5 text-sky-400" />
+                        <div>
+                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Telegram Bildirim Kanalı</h4>
+                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">ANLIK ARBİTRAJ VE HATA BİLDİRİMLERİ</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Entegrasyon</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Bot Token (TELEGRAM_TOKEN)</label>
+                        <input
+                          type="password"
+                          value={telegramToken}
+                          onChange={(e) => {
+                            setTelegramToken(e.target.value);
+                            localStorage.setItem('telegram_token', e.target.value);
+                          }}
+                          placeholder="Örn: 123456789:ABCdefGhI..."
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Sohbet ID (TELEGRAM_CHAT_ID)</label>
+                        <input
+                          type="text"
+                          value={telegramChatId}
+                          onChange={(e) => {
+                            setTelegramChatId(e.target.value);
+                            localStorage.setItem('telegram_chat_id', e.target.value);
+                          }}
+                          placeholder="Örn: 987654321"
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-[#0B0B0D] border border-[#222226] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-zinc-300 font-mono">Canlı Bağlantı Testi</span>
+                        <span className="text-[9px] text-zinc-500 font-mono">ANLIK SORGULAMA</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">
+                        Girdiğiniz bilgilerin doğruluğunu kontrol etmek ve botun size mesaj gönderebildiğinden emin olmak için testi başlatın.
+                      </p>
+                      <div className="flex items-center gap-3 pt-1">
+                        <button
+                          onClick={handleTestTelegram}
+                          disabled={telegramTestStatus === 'testing'}
+                          className="bg-sky-600 hover:bg-sky-500 disabled:bg-sky-800 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-4 py-2.5 rounded-none transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          {telegramTestStatus === 'testing' ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              TEST EDİLİYOR...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              BAĞLANTIYI TEST ET
+                            </>
+                          )}
+                        </button>
+                        {telegramTestStatus !== 'idle' && (
+                          <span className={`text-[11px] font-mono font-semibold ${
+                            telegramTestStatus === 'success' ? 'text-emerald-400' : 'text-rose-400'
+                          }`}>
+                            {telegramTestMessage}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Security Credentials Card */}
+                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
+                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <KeyRound className="w-5 h-5 text-indigo-400" />
+                        <div>
+                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Yönetim Paneli Giriş Bilgileri</h4>
+                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">KULLANICI GÜVENLİĞİ VE ŞİFRE YÖNETİMİ</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Kimlik</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Kullanıcı Adı</label>
+                        <input
+                          type="text"
+                          value={panelUsername}
+                          onChange={(e) => {
+                            setPanelUsername(e.target.value);
+                            localStorage.setItem('panel_username', e.target.value);
+                          }}
+                          placeholder="Yönetici kullanıcı adı"
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Giriş Şifresi</label>
+                        <input
+                          type="text"
+                          value={panelPassword}
+                          onChange={(e) => {
+                            setPanelPassword(e.target.value);
+                            localStorage.setItem('panel_password', e.target.value);
+                          }}
+                          placeholder="Yönetici şifresi"
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-500 leading-normal font-mono">
+                      ℹ️ Bilgiler tarayıcınızın güvenli yerel hafızasında (Local Storage) saklanır. Şifreyi değiştirdiğiniz an, sonraki girişlerde yeni şifreniz geçerli olacaktır.
+                    </p>
+                  </div>
+
+                  {/* Network and Performance Synchronized Settings */}
+                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
+                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Cpu className="w-5 h-5 text-indigo-400" />
+                        <div>
+                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Ağ ve Algoritma Parametreleri</h4>
+                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">RPC VE İŞLEM HASSASİYETİ AYARLARI</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Senkronize</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Solana RPC Bağlantı Adresi (Private/Custom)</label>
+                        <input
+                          type="text"
+                          value={rpcUrl}
+                          onChange={(e) => setRpcUrl(e.target.value)}
+                          placeholder="https://mainnet.helius-rpc.com/?api-key=..."
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Tarama Sıklığı (Saniye)</label>
+                        <input
+                          type="number"
+                          value={scanInterval}
+                          onChange={(e) => setScanInterval(Math.max(1, Number(e.target.value)))}
+                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                      Bu parametreler ana kontrol paneli ile senkronize çalışır. Buradan yaptığınız değişiklikler kod çıktısını (bot.ts) ve simülasyon parametrelerini doğrudan etkiler.
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* Right Column (4 cols): PM2 & Execution Tutorial */}
+                <div className="lg:col-span-4 space-y-6">
+                  
+                  {/* Dynamic PM2 Tutorial Card */}
+                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-4">
+                    <div className="border-b border-[#222226] pb-3">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5">
+                        <HelpCircle className="w-4 h-4 text-indigo-400" />
+                        PM2 VE BOT.TS KILAVUZU
+                      </h4>
+                      <p className="text-[9px] text-zinc-500 font-mono mt-1">PM2 İLE ARKA PLANDA KESİNTİSİZ ÇALIŞTIRMA</p>
+                    </div>
+
+                    <div className="space-y-4 text-xs leading-relaxed text-zinc-400 font-sans">
+                      
+                      <div className="space-y-2">
+                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">1. PM2 Nedir ve Neden Kullanılır?</span>
+                        <p>
+                          PM2, Linux ve Windows sunucularda çalışan Node.js/TypeScript uygulamalarınızı <strong className="text-zinc-200">arka planda (daemon)</strong> kesintisiz yürütmenizi sağlayan bir proses yöneticisidir. Terminali kapatsanız dahi botunuz çalışmaya devam eder, sunucu çökerse botu otomatik ayağa kaldırır.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">2. bot.ts İsmi Nereden Gelir?</span>
+                        <p>
+                          Yandaki panelden <strong className="text-zinc-200">"İNDİR (bot.ts)"</strong> butonuna basarak bilgisayarınıza kaydettiğiniz özelleştirilmiş dosya sizin asıl bot kodunuzdur. Sunucunuzda (örn. Ubuntu) bir çalışma dizini açıp (örn. `/root/solana-bot`) bu dosyanın ismini <code className="font-mono text-indigo-400">bot.ts</code> olarak kaydettiğinizde, PM2 komutunun hedef dosyası hazır hale gelir.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 bg-[#0B0B0D] border border-[#222226] p-3">
+                        <span className="text-[10px] font-mono font-bold uppercase text-indigo-400 tracking-wide block">PM2 Komutu Analizi:</span>
+                        <code className="block text-[10px] font-mono text-zinc-300 break-all bg-[#121215] p-2 border border-[#222226]">
+                          pm2 start "npx tsx src/bot.ts" --name solana-arbitrage-bot
+                        </code>
+                        <ul className="list-disc list-inside text-[10px] text-zinc-400 space-y-1 font-mono mt-1.5">
+                          <li><strong className="text-zinc-200">npx tsx:</strong> TS dosyalarını ön-derleme yapmadan doğrudan süper hızlı çalıştırır.</li>
+                          <li><strong className="text-zinc-200">src/bot.ts:</strong> Bot dosyanızın sunucudaki konumu.</li>
+                          <li><strong className="text-zinc-200">--name:</strong> PM2 kontrol listesindeki adı.</li>
+                        </ul>
+                      </div>
+
+                      <div className="space-y-2 border-t border-[#222226] pt-3">
+                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">Faydalı PM2 Komutları:</span>
+                        <div className="grid grid-cols-1 gap-2 text-[10px] font-mono text-zinc-300">
+                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
+                            <div className="text-indigo-400 font-semibold">pm2 logs solana-arbitrage-bot</div>
+                            <div className="text-zinc-500 mt-0.5 text-[9px]">Botun anlık konsol çıktılarını ve yakaladığı kârları izler.</div>
+                          </div>
+                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
+                            <div className="text-indigo-400 font-semibold">pm2 restart solana-arbitrage-bot</div>
+                            <div className="text-zinc-500 mt-0.5 text-[9px]">Yeni ayarların (Örn: telegram token) geçerli olması için botu yeniden başlatır.</div>
+                          </div>
+                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
+                            <div className="text-indigo-400 font-semibold">pm2 status</div>
+                            <div className="text-zinc-500 mt-0.5 text-[9px]">Tüm aktif botların CPU/RAM kullanımını listeler.</div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
                 </div>
 
               </motion.div>
