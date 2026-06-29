@@ -140,7 +140,7 @@ export default function App() {
     }
   ]);
   
-  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch Live Prices from Jupiter API
   const fetchLivePrices = async () => {
@@ -198,10 +198,10 @@ export default function App() {
     setTerminalLogs(prev => [...prev, { text, type, timestamp }].slice(-100)); // Keep last 100 logs
   };
 
-  // Auto scroll terminal to bottom
+  // Auto scroll terminal container to bottom (prevents page jump/scroll-up issues)
   useEffect(() => {
-    if (terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (terminalContainerRef.current) {
+      terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
     }
   }, [terminalLogs]);
 
@@ -1109,7 +1109,7 @@ export default function App() {
               </div>
 
               {/* Logs Screen */}
-              <div className="p-4 flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 bg-[#0B0B0D] selection:bg-zinc-800">
+              <div ref={terminalContainerRef} className="p-4 flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 bg-[#0B0B0D] selection:bg-zinc-800">
                 {terminalLogs.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-zinc-600 font-mono">
                     Kayıt bulunmuyor. Simülasyonu başlatın veya yapay fırsat tetikleyin.
@@ -1130,7 +1130,6 @@ export default function App() {
                     </div>
                   ))
                 )}
-                <div ref={terminalEndRef} />
               </div>
 
               {/* Terminal Bottom Info */}
