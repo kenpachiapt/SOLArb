@@ -40,6 +40,39 @@ async function startServer() {
     }
   });
 
+  app.post("/api/save-config", (req, res) => {
+    try {
+      const config = req.body;
+      const folderPath = path.join(process.cwd(), "SOLArb");
+      if (!fs.existsSync(folderPath)) {
+        fs.mkdirSync(folderPath, { recursive: true });
+      }
+      const filePath = path.join(folderPath, "config.json");
+      fs.writeFileSync(filePath, JSON.stringify(config, null, 2), "utf8");
+
+      console.log(`[SOLArb] config.json dosyası başarıyla sunucuya kaydedildi: ${filePath}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("config.json kaydedilirken hata oluştu:", error);
+      res.status(500).json({ error: error.message || "Dosya yazma hatası." });
+    }
+  });
+
+  app.get("/api/load-config", (req, res) => {
+    try {
+      const filePath = path.join(process.cwd(), "SOLArb", "config.json");
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, "utf8");
+        res.json({ success: true, config: JSON.parse(data) });
+      } else {
+        res.json({ success: false, message: "Henüz kaydedilmiş ayar bulunamadı." });
+      }
+    } catch (error: any) {
+      console.error("config.json yüklenirken hata oluştu:", error);
+      res.status(500).json({ error: error.message || "Dosya okuma hatası." });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

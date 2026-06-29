@@ -135,6 +135,36 @@ export default function App() {
   const [saveServerStatus, setSaveServerStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [saveServerMessage, setSaveServerMessage] = useState<string>('');
 
+  // Load configuration from server on mount
+  useEffect(() => {
+    const loadServerConfig = async () => {
+      try {
+        const response = await fetch('/api/load-config');
+        const data = await response.json();
+        if (data.success && data.config) {
+          const cfg = data.config;
+          if (cfg.rpcUrl) setRpcUrl(cfg.rpcUrl);
+          if (cfg.startToken) setStartToken(cfg.startToken);
+          if (cfg.interToken) setInterToken(cfg.interToken);
+          if (cfg.amount !== undefined) setAmount(Number(cfg.amount));
+          if (cfg.minProfitPct !== undefined) setMinProfitPct(Number(cfg.minProfitPct));
+          if (cfg.slippagePct !== undefined) setSlippagePct(Number(cfg.slippagePct));
+          if (cfg.useJito !== undefined) setUseJito(cfg.useJito === true || cfg.useJito === 'true');
+          if (cfg.priorityFeeSol !== undefined) setPriorityFeeSol(Number(cfg.priorityFeeSol));
+          if (cfg.scanInterval !== undefined) setScanInterval(Number(cfg.scanInterval));
+          if (cfg.telegramToken) setTelegramToken(cfg.telegramToken);
+          if (cfg.telegramChatId) setTelegramChatId(cfg.telegramChatId);
+          if (cfg.privateKey) setPrivateKey(cfg.privateKey);
+          if (cfg.panelUsername) setPanelUsername(cfg.panelUsername);
+          if (cfg.panelPassword) setPanelPassword(cfg.panelPassword);
+        }
+      } catch (err) {
+        console.error("Sunucudan konfigürasyon yüklenirken hata:", err);
+      }
+    };
+    loadServerConfig();
+  }, []);
+
   // Prices State
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
   const [isFetchingPrices, setIsFetchingPrices] = useState<boolean>(false);
@@ -279,21 +309,45 @@ export default function App() {
     addLog(`📥 Özelleştirilmiş bot.ts dosyası bilgisayarınıza indirildi!`, 'info');
   };
 
-  // Save Code to Server
+  // Save Code and Config to Server
   const handleSaveToServer = async () => {
     setSaveServerStatus('saving');
     setSaveServerMessage('');
     try {
+      // 1. Save Code file
       const response = await fetch('/api/save-bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: generatedCode })
       });
       const data = await response.json();
+
       if (data.success) {
+        // 2. Save UI Config file
+        await fetch('/api/save-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rpcUrl,
+            startToken,
+            interToken,
+            amount,
+            minProfitPct,
+            slippagePct,
+            useJito,
+            priorityFeeSol,
+            scanInterval,
+            telegramToken,
+            telegramChatId,
+            privateKey,
+            panelUsername,
+            panelPassword
+          })
+        });
+
         setSaveServerStatus('success');
-        setSaveServerMessage('Başarılı! SOLArb/bot.ts dosyası kaydedildi.');
-        addLog('💾 bot.ts kod dosyası sunucudaki /SOLArb/bot.ts konumuna kaydedildi.', 'success');
+        setSaveServerMessage('Başarılı! bot.ts ve ayarlar sunucuya kaydedildi.');
+        addLog('💾 bot.ts kod dosyası ve yapılandırma ayarları sunucudaki /SOLArb/ konumuna kaydedildi.', 'success');
         setTimeout(() => setSaveServerStatus('idle'), 4000);
       } else {
         setSaveServerStatus('error');
