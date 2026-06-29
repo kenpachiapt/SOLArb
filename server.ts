@@ -102,10 +102,31 @@ async function startServer() {
 
       addBotLog("🚀 Gerçek Solana botu başlatılıyor...", "info");
       
+      // Determine the best execution method
+      let command = "npx";
+      let args = ["-y", "tsx", "SOLArb/bot.ts"];
+      
+      const localTsxPath = path.join(process.cwd(), "node_modules", ".bin", "tsx");
+      const localTsxMjs = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+
+      if (fs.existsSync(localTsxPath)) {
+        command = localTsxPath;
+        args = ["SOLArb/bot.ts"];
+        addBotLog(`📌 Yerel TSX ikilisi tespit edildi: ${command}`, "info");
+      } else if (fs.existsSync(localTsxMjs)) {
+        command = process.execPath; // Absolute path to node
+        args = [localTsxMjs, "SOLArb/bot.ts"];
+        addBotLog(`📌 Yerel TSX cli modülü tespit edildi, node ile çalıştırılıyor: ${command}`, "info");
+      } else {
+        addBotLog(`📌 Yerel TSX bulunamadı, npx -y tsx ile çalıştırılıyor...`, "info");
+      }
+
+      const isWin = process.platform === "win32";
+      
       // Spawn TSX process to run the TypeScript bot
-      botProcess = spawn("npx", ["tsx", "SOLArb/bot.ts"], {
+      botProcess = spawn(command, args, {
         cwd: process.cwd(),
-        shell: true,
+        shell: isWin,
         env: { ...process.env, NODE_ENV: "production" }
       });
 
