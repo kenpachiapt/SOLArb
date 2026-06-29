@@ -127,6 +127,80 @@ export default function App() {
   const [simProfit, setSimProfit] = useState<number>(0);
   const [simTransactions, setSimTransactions] = useState<number>(0);
 
+  // Real Bot Server States
+  const [activeConsoleMode, setActiveConsoleMode] = useState<'simulation' | 'real'>('simulation');
+  const [realBotRunning, setRealBotRunning] = useState<boolean>(false);
+  const [realBotLogs, setRealBotLogs] = useState<{ text: string; type: string; timestamp: string }[]>([]);
+  const [isStartingBot, setIsStartingBot] = useState<boolean>(false);
+  const [isStoppingBot, setIsStoppingBot] = useState<boolean>(false);
+
+  // Periodically poll real bot status from backend
+  useEffect(() => {
+    let intervalId: any;
+    
+    const fetchBotStatus = async () => {
+      try {
+        const response = await fetch('/api/bot/status');
+        const data = await response.json();
+        if (data.success) {
+          setRealBotRunning(data.running);
+          if (data.logs) {
+            setRealBotLogs(data.logs);
+          }
+        }
+      } catch (err) {
+        console.error("Bot durumu alınamadı:", err);
+      }
+    };
+
+    fetchBotStatus(); // Fetch immediately
+    intervalId = setInterval(fetchBotStatus, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const handleStartRealBot = async () => {
+    setIsStartingBot(true);
+    try {
+      // Auto-save configuration to server first before starting the bot, to ensure bot.ts has the latest values!
+      await handleSaveToServer();
+
+      const response = await fetch('/api/bot/start', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        addLog("▶️ Gerçek Solana Botu sunucuda başarıyla başlatıldı!", "success");
+        setRealBotRunning(true);
+      } else {
+        addLog(`❌ Bot başlatılamadı: ${data.error || "Bilinmeyen hata"}`, "error");
+        alert(`Hata: ${data.error}`);
+      }
+    } catch (err) {
+      console.error("Bot başlatılırken hata oluştu:", err);
+      addLog("❌ Bot başlatılırken bağlantı hatası oluştu.", "error");
+    } finally {
+      setIsStartingBot(false);
+    }
+  };
+
+  const handleStopRealBot = async () => {
+    setIsStoppingBot(true);
+    try {
+      const response = await fetch('/api/bot/stop', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        addLog("⏸️ Gerçek Solana Botu sunucuda durduruldu.", "warning");
+        setRealBotRunning(false);
+      } else {
+        addLog(`❌ Bot durdurulamadı: ${data.error || "Bilinmeyen hata"}`, "error");
+      }
+    } catch (err) {
+      console.error("Bot durdurulurken hata oluştu:", err);
+      addLog("❌ Bot durdurulurken bağlantı hatası oluştu.", "error");
+    } finally {
+      setIsStoppingBot(false);
+    }
+  };
+
   // Telegram Testing States
   const [telegramTestStatus, setTelegramTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [telegramTestMessage, setTelegramTestMessage] = useState<string>('');
@@ -268,7 +342,7 @@ export default function App() {
     if (terminalContainerRef.current) {
       terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
     }
-  }, [terminalLogs]);
+  }, [terminalLogs, realBotLogs, activeConsoleMode]);
 
   // Handle Token constraint: StartToken and InterToken cannot be the same
   useEffect(() => {
@@ -1153,40 +1227,99 @@ export default function App() {
             <div className="bg-[#0B0B0D] border border-[#222226] rounded-none flex flex-col overflow-hidden h-[435px] relative">
               
               {/* Terminal Title Bar */}
-              <div className="bg-[#121215] px-4 py-3 border-b border-[#222226] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TerminalIcon className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-mono text-zinc-300 font-semibold">Terminal Log Günlüğü (bot-instance-01)</span>
+              <div className="bg-[#121215] px-4 py-2 border-b border-[#222226] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <TerminalIcon className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-mono text-zinc-300 font-semibold">Panel Modu:</span>
+                  </div>
+                  
+                  {/* Console Mode Switcher Buttons */}
+                  <div className="flex bg-[#0B0B0D] p-0.5 border border-[#222226] font-mono text-[10px]">
+                    <button
+                      onClick={() => setActiveConsoleMode('simulation')}
+                      className={`px-3 py-1 font-semibold transition-all cursor-pointer ${
+                        activeConsoleMode === 'simulation'
+                          ? 'bg-indigo-600/15 text-indigo-400 border-b border-indigo-500'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      SİMÜLASYON
+                    </button>
+                    <button
+                      onClick={() => setActiveConsoleMode('real')}
+                      className={`px-3 py-1 font-semibold transition-all cursor-pointer ${
+                        activeConsoleMode === 'real'
+                          ? 'bg-emerald-600/15 text-emerald-400 border-b border-emerald-500'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      GERÇEK BOT (SUNUCU)
+                    </button>
+                  </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                  {/* Force Opportunity Button */}
-                  <button
-                    onClick={handleForceOpportunity}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-none border border-indigo-500 hover:border-indigo-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-                    title="Simülatöre yapay bir arbitraj fırsatı gönderir"
-                  >
-                    <Zap className="w-3 h-3 fill-white" />
-                    Yapay Fırsat Tetikle
-                  </button>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  {activeConsoleMode === 'simulation' ? (
+                    <>
+                      {/* Force Opportunity Button */}
+                      <button
+                        onClick={handleForceOpportunity}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-none border border-indigo-500 hover:border-indigo-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Simülatöre yapay bir arbitraj fırsatı gönderir"
+                      >
+                        <Zap className="w-3 h-3 fill-white" />
+                        Yapay Fırsat Tetikle
+                      </button>
 
-                  {/* Play/Pause simulation */}
-                  <button
-                    onClick={() => {
-                      setIsSimulating(!isSimulating);
-                      addLog(isSimulating ? '⏸️ Simülatör duraklatıldı.' : '▶️ Simülatör yeniden başlatıldı.', 'warning');
-                    }}
-                    className={`p-1.5 hover:bg-[#1E1E22] transition-colors cursor-pointer ${isSimulating ? 'text-amber-400' : 'text-emerald-400'}`}
-                    title={isSimulating ? 'Simülasyonu Duraklat' : 'Simülasyonu Başlat'}
-                  >
-                    {isSimulating ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  </button>
+                      {/* Play/Pause simulation */}
+                      <button
+                        onClick={() => {
+                          setIsSimulating(!isSimulating);
+                          addLog(isSimulating ? '⏸️ Simülatör duraklatıldı.' : '▶️ Simülatör yeniden başlatıldı.', 'warning');
+                        }}
+                        className={`p-1.5 hover:bg-[#1E1E22] transition-colors cursor-pointer ${isSimulating ? 'text-amber-400' : 'text-emerald-400'}`}
+                        title={isSimulating ? 'Simülasyonu Duraklat' : 'Simülasyonu Başlat'}
+                      >
+                        {isSimulating ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Real Bot Controls */}
+                      {realBotRunning ? (
+                        <button
+                          onClick={handleStopRealBot}
+                          disabled={isStoppingBot}
+                          className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-800/50 text-white font-medium text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-none border border-rose-500 hover:border-rose-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                          title="Sunucudaki gerçek bot sürecini sonlandırır"
+                        >
+                          <Square className="w-3 h-3 fill-white" />
+                          {isStoppingBot ? 'Durduruluyor...' : 'Gerçek Botu Durdur'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleStartRealBot}
+                          disabled={isStartingBot}
+                          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/50 text-white font-medium text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-none border border-emerald-500 hover:border-emerald-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer font-bold"
+                          title="Yapılandırmayı otomatik kaydeder ve sunucuda gerçek botu başlatır"
+                        >
+                          <Play className="w-3 h-3 fill-white" />
+                          {isStartingBot ? 'Başlatılıyor...' : 'Gerçek Botu Başlat'}
+                        </button>
+                      )}
+                    </>
+                  )}
 
                   {/* Clear logs */}
                   <button
                     onClick={() => {
-                      setTerminalLogs([]);
-                      addLog('🧼 Terminal temizlendi.', 'info');
+                      if (activeConsoleMode === 'simulation') {
+                        setTerminalLogs([]);
+                        addLog('🧼 Terminal temizlendi.', 'info');
+                      } else {
+                        setRealBotLogs([]);
+                      }
                     }}
                     className="p-1.5 hover:bg-[#1E1E22] text-zinc-400 hover:text-white transition-colors cursor-pointer"
                     title="Temizle"
@@ -1200,35 +1333,105 @@ export default function App() {
 
               {/* Logs Screen */}
               <div ref={terminalContainerRef} className="p-4 flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 bg-[#0B0B0D] selection:bg-zinc-800">
-                {terminalLogs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-zinc-600 font-mono">
-                    Kayıt bulunmuyor. Simülasyonu başlatın veya yapay fırsat tetikleyin.
-                  </div>
-                ) : (
-                  terminalLogs.map((log, idx) => (
-                    <div key={idx} className="flex items-start gap-1.5 hover:bg-[#121215] py-0.5 rounded-none px-1 transition-colors">
-                      <span className="text-zinc-600 shrink-0 select-none">[{log.timestamp}]</span>
-                      <span className={`
-                        ${log.type === 'success' ? 'text-emerald-400 font-semibold' : ''}
-                        ${log.type === 'warning' ? 'text-amber-400' : ''}
-                        ${log.type === 'error' ? 'text-rose-400 font-bold' : ''}
-                        ${log.type === 'scanner' ? 'text-indigo-400 font-medium' : ''}
-                        ${log.type === 'info' ? 'text-zinc-300' : ''}
-                      `}>
-                        {log.text}
-                      </span>
+                {activeConsoleMode === 'simulation' ? (
+                  terminalLogs.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-zinc-600 font-mono">
+                      Kayıt bulunmuyor. Simülasyonu başlatın veya yapay fırsat tetikleyin.
                     </div>
-                  ))
+                  ) : (
+                    terminalLogs.map((log, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5 hover:bg-[#121215] py-0.5 rounded-none px-1 transition-colors">
+                        <span className="text-zinc-600 shrink-0 select-none">[{log.timestamp}]</span>
+                        <span className={`shrink-0 select-none ${
+                          log.type === 'success' ? 'text-emerald-400' :
+                          log.type === 'error' ? 'text-rose-400' :
+                          log.type === 'warning' ? 'text-amber-400' :
+                          'text-indigo-400'
+                        }`}>
+                          {log.type === 'success' ? '●' :
+                           log.type === 'error' ? '■' :
+                           log.type === 'warning' ? '▲' :
+                           '○'}
+                        </span>
+                        <span className={`break-all ${
+                          log.type === 'success' ? 'text-emerald-400 font-semibold' :
+                          log.type === 'error' ? 'text-rose-400 font-semibold' :
+                          log.type === 'warning' ? 'text-amber-300' :
+                          log.type === 'info' ? 'text-zinc-300' : 'text-zinc-400'
+                        }`}>
+                          {log.text}
+                        </span>
+                      </div>
+                    ))
+                  )
+                ) : (
+                  realBotLogs.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-600 font-mono text-center p-6">
+                      <div className="p-4 bg-[#121215] border border-[#222226] max-w-md">
+                        {realBotRunning ? (
+                          <div className="flex items-center justify-center gap-2.5 text-emerald-400">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                            <span className="text-xs uppercase font-bold tracking-wider">Bot Sunucuda Aktif, Loglar bekleniyor...</span>
+                          </div>
+                        ) : (
+                          <div className="text-zinc-500 space-y-1">
+                            <span className="text-xs uppercase font-bold tracking-wider block text-zinc-400">Gerçek Bot Sunucuda Pasif</span>
+                            <p className="text-[10px] leading-normal font-sans text-zinc-500">
+                              Gerçek botu başlatmak için yukarıdaki <span className="text-emerald-400 font-mono font-bold">Gerçek Botu Başlat</span> butonuna basın. 
+                              Öncesinde Solana Cüzdan Ayarları ve RPC adresinizi girdiğinizden emin olun. Bot başladığında çıktılar burada canlı akacaktır.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    realBotLogs.map((log, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5 hover:bg-[#121215] py-0.5 rounded-none px-1 transition-colors">
+                        <span className="text-zinc-600 shrink-0 select-none">[{log.timestamp}]</span>
+                        <span className={`shrink-0 select-none ${
+                          log.type === 'success' ? 'text-emerald-400' :
+                          log.type === 'error' ? 'text-rose-400' :
+                          log.type === 'warning' ? 'text-amber-400' :
+                          'text-indigo-400'
+                        }`}>
+                          {log.type === 'success' ? '●' :
+                           log.type === 'error' ? '■' :
+                           log.type === 'warning' ? '▲' :
+                           '○'}
+                        </span>
+                        <span className={`break-all ${
+                          log.type === 'success' ? 'text-emerald-400 font-semibold' :
+                          log.type === 'error' ? 'text-rose-400 font-semibold' :
+                          log.type === 'warning' ? 'text-amber-300' :
+                          log.type === 'info' ? 'text-zinc-300' : 'text-zinc-400'
+                        }`}>
+                          {log.text}
+                        </span>
+                      </div>
+                    ))
+                  )
                 )}
               </div>
 
               {/* Terminal Bottom Info */}
               <div className="bg-[#121215] px-4 py-2 border-t border-[#222226] flex justify-between items-center text-[10px] text-zinc-500 font-mono">
-                <span className="flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isSimulating ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                  {isSimulating ? 'Simülasyon Aktif (Canlı Döngü)' : 'Simülasyon Durduruldu'}
-                </span>
-                <span>Fiyatlar her 15sn'de bir güncelleniyor.</span>
+                {activeConsoleMode === 'simulation' ? (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSimulating ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                      {isSimulating ? 'Simülasyon Aktif (Canlı Döngü)' : 'Simülasyon Durduruldu'}
+                    </span>
+                    <span>Fiyatlar her 15sn'de bir güncelleniyor.</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${realBotRunning ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                      {realBotRunning ? 'GERÇEK BOT AKTİF (SUNUCUDA)' : 'GERÇEK BOT PASİF'}
+                    </span>
+                    <span>Tarama Aralığı: {scanInterval} Saniye</span>
+                  </>
+                )}
               </div>
             </div>
 
