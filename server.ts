@@ -3,6 +3,12 @@ import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
+import dns from "dns";
+
+// Node's IPv6 DNS bug fix for some containers
+if (dns && typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 async function startServer() {
   const app = express();

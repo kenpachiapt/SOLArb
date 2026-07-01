@@ -15,6 +15,12 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
+import dns from "dns";
+
+// Node.js'in IPv6 önceliği sebebiyle oluşan DNS ENOTFOUND (quote-api.jup.ag vb.) hatalarını önle
+if (dns && typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 // Ortam değişkenlerini yükle (.env)
 dotenv.config();
