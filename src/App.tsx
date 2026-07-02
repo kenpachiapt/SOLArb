@@ -65,7 +65,7 @@ export default function App() {
   // Config States
   const [rpcUrl, setRpcUrl] = useState<string>(() => localStorage.getItem('solarb_rpc_url') || 'https://api.mainnet-beta.solana.com');
   const [startToken, setStartToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK'>(() => (localStorage.getItem('solarb_start_token') as any) || 'SOL');
-  const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF'>(() => (localStorage.getItem('solarb_inter_token') as any) || 'USDC');
+  const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF' | 'ALL'>(() => (localStorage.getItem('solarb_inter_token') as any) || 'USDC');
   const [amount, setAmount] = useState<number>(() => {
     const saved = localStorage.getItem('solarb_amount');
     return saved !== null ? Number(saved) : 5;
@@ -91,6 +91,11 @@ export default function App() {
     return saved !== null ? Number(saved) : 5;
   });
   const [jupiterApiUrl, setJupiterApiUrl] = useState<string>(() => localStorage.getItem('solarb_jupiter_api_url') || '');
+  const [customMints, setCustomMints] = useState<string>(() => localStorage.getItem('solarb_custom_mints') || '');
+  const [autoDiscoverMeme, setAutoDiscoverMeme] = useState<boolean>(() => {
+    const saved = localStorage.getItem('solarb_auto_discover_meme');
+    return saved !== null ? saved === 'true' : true;
+  });
 
   // Save configurations to localStorage automatically
   useEffect(() => {
@@ -104,7 +109,9 @@ export default function App() {
     localStorage.setItem('solarb_priority_fee_sol', String(priorityFeeSol));
     localStorage.setItem('solarb_scan_interval', String(scanInterval));
     localStorage.setItem('solarb_jupiter_api_url', jupiterApiUrl);
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl]);
+    localStorage.setItem('solarb_custom_mints', customMints);
+    localStorage.setItem('solarb_auto_discover_meme', String(autoDiscoverMeme));
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme]);
 
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
@@ -234,6 +241,8 @@ export default function App() {
           if (cfg.panelUsername) setPanelUsername(cfg.panelUsername);
           if (cfg.panelPassword) setPanelPassword(cfg.panelPassword);
           if (cfg.jupiterApiUrl) setJupiterApiUrl(cfg.jupiterApiUrl);
+          if (cfg.customMints) setCustomMints(cfg.customMints);
+          if (cfg.autoDiscoverMeme !== undefined) setAutoDiscoverMeme(cfg.autoDiscoverMeme === true || cfg.autoDiscoverMeme === 'true');
         }
       } catch (err) {
         console.error("Sunucudan konfigürasyon yüklenirken hata:", err);
@@ -349,7 +358,7 @@ export default function App() {
 
   // Handle Token constraint: StartToken and InterToken cannot be the same
   useEffect(() => {
-    if (startToken === interToken) {
+    if (interToken !== 'ALL' && startToken === interToken) {
       // Shift inter token to something else
       const remaining = (['SOL', 'USDC', 'USDT', 'BONK', 'JUP', 'WIF'] as const).filter(t => t !== startToken);
       setInterToken(remaining[0]);
@@ -371,9 +380,11 @@ export default function App() {
       telegramToken,
       telegramChatId,
       privateKey,
-      jupiterApiUrl
+      jupiterApiUrl,
+      customMints,
+      autoDiscoverMeme
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -420,7 +431,9 @@ export default function App() {
             privateKey,
             panelUsername,
             panelPassword,
-            jupiterApiUrl
+            jupiterApiUrl,
+            customMints,
+            autoDiscoverMeme
           })
         });
 
@@ -501,15 +514,45 @@ export default function App() {
       counter++;
       setSimulationStep('checking');
       
+      // Determine active intermediate token for this tick of simulation
+      let activeInter = interToken;
+      if (interToken === 'ALL') {
+        const defaultIntermediates = ['USDC', 'USDT', 'BONK', 'JUP', 'WIF', 'SOL'].filter(t => t !== startToken);
+        // Let's alternate between default targets and custom targets
+        if (customMints && Math.random() < 0.4) {
+          const mints = customMints.split(',').map(m => m.trim()).filter(m => m.length > 30);
+          if (mints.length > 0) {
+            const randomMint = mints[Math.floor(Math.random() * mints.length)];
+            const label = randomMint.toLowerCase().endsWith('pump') ? 'PUMP' : 'SPL';
+            activeInter = `${label}_${randomMint.substring(0, 4)}...${randomMint.substring(randomMint.length - 4)}` as any;
+          } else {
+            activeInter = defaultIntermediates[Math.floor(Math.random() * defaultIntermediates.length)] as any;
+          }
+        } else {
+          activeInter = defaultIntermediates[Math.floor(Math.random() * defaultIntermediates.length)] as any;
+        }
+      } else {
+        // If a single inter is selected but customMints exist, occasionally test custom mints
+        if (customMints && Math.random() < 0.25) {
+          const mints = customMints.split(',').map(m => m.trim()).filter(m => m.length > 30);
+          if (mints.length > 0) {
+            const randomMint = mints[Math.floor(Math.random() * mints.length)];
+            const label = randomMint.toLowerCase().endsWith('pump') ? 'PUMP' : 'SPL';
+            activeInter = `${label}_${randomMint.substring(0, 4)}...${randomMint.substring(randomMint.length - 4)}` as any;
+          }
+        }
+      }
+
       // Calculate token price pairs
       const startPrice = prices[startToken] || 1;
-      const interPrice = prices[interToken] || 1;
+      const interPrice = activeInter.toString().startsWith('PUMP') || activeInter.toString().startsWith('SPL')
+        ? 0.0025 
+        : (prices[activeInter as any] || 1);
       
       // Base exchange rate
       const baseRate = startPrice / interPrice;
       
       // Simulate slightly varied prices for DEX A and DEX B
-      // Usually variations are tiny (< 0.1%), but occasionally we fluctuate larger to simulate a real opportunity
       const hasOpportunity = Math.random() < 0.15; // 15% chance of organic opportunity in simulation
       
       let rateA = baseRate;
@@ -526,27 +569,27 @@ export default function App() {
         rateA = baseRate;
         rateB = baseRate * (1 + spread);
       }
-
+ 
       const pA = startPrice;
       const pB = startPrice * (rateB / rateA);
       
       setDexAPrice(pA);
       setDexBPrice(pB);
-
+ 
       const diff = ((pB - pA) / pA) * 100;
       setCurrentDiffPct(diff);
-
+ 
       const scanTime = new Date().toLocaleTimeString();
       addLog(`🔍 [${scanTime}] Arbitraj taranıyor...`, 'scanner');
-      addLog(`   DEX A (${startToken}/${interToken} paritesi): 1 ${startToken} = ${(rateA).toFixed(startToken === 'BONK' ? 8 : 4)} ${interToken}`, 'info');
-      addLog(`   DEX B (${interToken}/${startToken} paritesi): 1 ${startToken} = ${(rateB).toFixed(startToken === 'BONK' ? 8 : 4)} ${interToken}`, 'info');
+      addLog(`   DEX A (${startToken}/${activeInter} paritesi): 1 ${startToken} = ${(rateA).toFixed(startToken === 'BONK' ? 8 : 4)} ${activeInter}`, 'info');
+      addLog(`   DEX B (${activeInter}/${startToken} paritesi): 1 ${startToken} = ${(rateB).toFixed(startToken === 'BONK' ? 8 : 4)} ${activeInter}`, 'info');
       
       const expectedInterAmount = amount * rateA;
       const returnedStartAmount = expectedInterAmount / rateB;
       const netChange = returnedStartAmount - amount;
       const netPct = (netChange / amount) * 100;
-
-      addLog(`   🔄 Döngü Sonucu: ${amount} ${startToken} ➔ ${expectedInterAmount.toFixed(4)} ${interToken} ➔ ${returnedStartAmount.toFixed(6)} ${startToken}`, 'info');
+ 
+      addLog(`   🔄 Döngü Sonucu: ${amount} ${startToken} ➔ ${expectedInterAmount.toFixed(4)} ${activeInter} ➔ ${returnedStartAmount.toFixed(6)} ${startToken}`, 'info');
       
       if (netPct >= minProfitPct) {
         // Trigger Successful Arbitrage Flow
@@ -563,7 +606,7 @@ export default function App() {
             addLog(`   [3/4] 🚀 Doğrudan Solana Mainnet RPC kanalı üzerinden işlem ağa yayınlanıyor...`, 'warning');
           }
         }, 1200);
-
+ 
         setTimeout(() => {
           setSimulationStep('success');
           const finalProfit = netChange * startPrice;
@@ -571,7 +614,7 @@ export default function App() {
           setSimTransactions(prev => prev + 1);
           
           const txHashRandom = Math.random().toString(36).substring(2, 8).toUpperCase();
-          const routeStr = `${startToken} ➔ ${interToken} ➔ ${startToken}`;
+          const routeStr = `${startToken} ➔ ${activeInter} ➔ ${startToken}`;
           setTxHistory(prev => [
             {
               id: `tx-sim-${Date.now()}`,
@@ -588,7 +631,7 @@ export default function App() {
             },
             ...prev
           ].slice(0, 50));
-
+ 
           addLog(`   [4/4] ✅ İŞLEM ONAYLANDI! Blok Yüksekliği tespit edildi.`, 'success');
           addLog(`   💰 KAZANILAN NET KÂR: +${netChange.toFixed(6)} ${startToken} (~$${finalProfit.toFixed(4)})`, 'success');
           
@@ -596,12 +639,12 @@ export default function App() {
             setSimulationStep('idle');
           }, 1500);
         }, 2800);
-
+ 
       } else {
         addLog(`   ⏱️ Net Değişim: ${netChange > 0 ? '+' : ''}${netChange.toFixed(6)} ${startToken} (%${netPct.toFixed(3)}). Hedefin altında (%${minProfitPct}). İşlem es geçildi.`, 'info');
         setSimulationStep('idle');
       }
-
+ 
     }, scanInterval * 1000);
 
     return () => clearInterval(scannerInterval);
@@ -907,16 +950,57 @@ export default function App() {
                   <select
                     value={interToken}
                     onChange={(e) => setInterToken(e.target.value as any)}
-                    className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors font-mono cursor-pointer"
+                    className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors font-mono cursor-pointer font-bold text-indigo-400"
                   >
-                    <option value="USDC">USDC (Stable)</option>
-                    <option value="USDT">USDT (Stable)</option>
-                    <option value="BONK">BONK (Meme)</option>
-                    <option value="JUP">JUP (Governance)</option>
-                    <option value="WIF">WIF (Meme)</option>
-                    <option value="SOL">SOL (Native)</option>
+                    <option value="ALL" className="text-emerald-400 font-bold">🔄 TÜM PARİTELERİ TARA (Çoklu-Parite Modu)</option>
+                    <option value="USDC" className="text-zinc-200">USDC (Stable)</option>
+                    <option value="USDT" className="text-zinc-200">USDT (Stable)</option>
+                    <option value="BONK" className="text-zinc-200">BONK (Meme)</option>
+                    <option value="JUP" className="text-zinc-200">JUP (Governance)</option>
+                    <option value="WIF" className="text-zinc-200">WIF (Meme)</option>
+                    <option value="SOL" className="text-zinc-200">SOL (Native)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Dynamic Meme Coin Discovery Checkbox */}
+              <div className="bg-[#0B0B0D] border border-[#222226] p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-zinc-200">🤖 Otomatik Meme Coin Keşfi</span>
+                    <span className="text-[10px] text-zinc-500">DexScreener ile Trend Meme Pariteleri</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoDiscoverMeme}
+                      onChange={(e) => setAutoDiscoverMeme(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600 peer-checked:after:bg-white"></div>
+                  </label>
+                </div>
+                <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
+                  Açık olduğunda, Solana üzerinde DexScreener'da trend olan, yüksek hacimli ve en aktif meme coinler otomatik olarak taranır. Manuel mint adresi girmek zorunda kalmazsınız!
+                </p>
+              </div>
+
+              {/* Custom Token Mints (Pump.fun / SPL) */}
+              <div className="space-y-2">
+                <label className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold flex items-center justify-between">
+                  <span>Özel Token Adresleri (Meme / Pump.fun)</span>
+                  <span className="text-[9px] font-mono text-zinc-500">Münferit / Çoklu</span>
+                </label>
+                <input
+                  type="text"
+                  value={customMints}
+                  onChange={(e) => setCustomMints(e.target.value)}
+                  className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-zinc-700"
+                  placeholder="Virgülle ayırın, örn: G8p8WjB...pump, JUP..."
+                />
+                <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
+                  💡 Fırsat yakalayacağınız özel pump.fun veya SPL coinlerin mint adreslerini aralarına virgül koyarak ekleyin. Bot hem standart paritelerde hem de eklediğiniz bu meme coinlerde eşzamanlı dairesel fırsat tarar.
+                </p>
               </div>
 
               {/* Amount input */}

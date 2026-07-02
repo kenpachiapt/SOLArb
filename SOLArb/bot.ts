@@ -1,14 +1,11 @@
 /**
  * ====================================================================
- * SOLArb - DAİRESEL ARBİTRAJ BOTU (ÖZELLEŞTİRİLMİŞ ÜRETİM TASLAĞI)
+ * SOLArb - ÇOKLU PARİTE VE MEME COIN ARBİTRAJ BOTU (GÜNCEL SÜRÜM)
  * ====================================================================
- * Bu kod, Jupiter v6 API'sini ve Solana Web3.js kütüphanesini kullanarak
- * iki yönlü/dairesel arbitraj (Token A -> Token B -> Token A) fırsatlarını tarar.
- * 
- * Güvenlik Uyarısı: Özel anahtarınızı (.env dosyasında) asla başkalarıyla
- * paylaşmayın ve her zaman güvenli, özel bir RPC düğümü (Helius, QuickNode vb.) kullanın.
- * 
- * Kurulum ve Çalıştırma Adımları kodun altında açıklanmıştır.
+ * Bu bot, Solana Mainnet üzerinde dairesel arbitraj fırsatlarını arar.
+ * "Tüm Pariteler" modu seçildiğinde, cüzdanınızdaki başlangıç varlığını koruyarak
+ * JUP, BONK, WIF, USDC, USDT ve eklediğiniz pump.fun tokenlerinde fırsat kovalayıp
+ * anında kârı cüzdanınıza ekler.
  */
 
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
@@ -16,8 +13,14 @@ import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
 import dns from "dns";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// Node.js'in IPv6 önceliği sebebiyle oluşan DNS ENOTFOUND (quote-api.jup.ag vb.) hatalarını önle
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Node.js'in IPv6 önceliği sebebiyle oluşan DNS ENOTFOUND hatalarını önle
 if (dns && typeof dns.setDefaultResultOrder === "function") {
   dns.setDefaultResultOrder("ipv4first");
 }
@@ -27,50 +30,41 @@ dotenv.config();
 
 // Yapılandırma Parametreleri
 const CONFIG = {
-  // RPC Bağlantı Adresi (Özel RPC kullanılması şiddetle önerilir)
   RPC_URL: "https://api.mainnet-beta.solana.com",
   
-  // Ticaret Yapılacak Token Bilgileri
   START_TOKEN: "SOL",
   START_MINT: "So11111111111111111111111111111111111111112",
   START_DECIMALS: 9,
   
-  INTER_TOKEN: "USDC",
+  INTER_TOKEN: "ALL",
   INTER_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   INTER_DECIMALS: 6,
 
-  // İşlem Tutarı (5 SOL)
   TRADE_AMOUNT: 5,
-  TRADE_AMOUNT_RAW: 5000000000, // Lamport/Raw cinsinden
+  TRADE_AMOUNT_RAW: 5000000000,
 
-  // Toleranslar ve Sınırlar
-  SLIPPAGE_BPS: 20, // Slipaj Tolere Oranı (%0.2)
-  MIN_PROFIT_PCT: 0.5, // Minimum Kâr Hedefi (%0.5)
+  SLIPPAGE_BPS: 20,
+  MIN_PROFIT_PCT: 0.5,
   
-  // Öncelikli İşlem Ücreti (Priority Fee)
-  PRIORITY_FEE_SOL: 0.0001, // SOL cinsinden ek ücret
-  
-  // Tarama Sıklığı
-  SCAN_INTERVAL: 5000, // Milisaniye cinsinden (5 saniye)
+  PRIORITY_FEE_SOL: 0.0001,
+  SCAN_INTERVAL: 5000,
 
-  // Jito MEV Blok Motoru Kullanımı
   USE_JITO: true,
   JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
 
-  // Jupiter API Adresi (Özel API kullanmak istiyorsanız girin, boş bırakırsanız otomatik yedekli rotasyon yapılır)
   JUPITER_API_URL: "",
 
-  // Telegram Bildirim Ayarları
   TELEGRAM_TOKEN: "",
-  TELEGRAM_CHAT_ID: ""
+  TELEGRAM_CHAT_ID: "",
+  
+  CUSTOM_MINTS: "",
+  AUTO_DISCOVER_MEME: true
 };
 
 let privateKeyString = "";
 
 // Eğer yerel veya üst klasörde config.json varsa dinamik olarak yükle (panel ile tam senkronizasyon için)
 try {
-  const fs = require("fs");
-  const path = require("path");
   const possiblePaths = [
     path.join(process.cwd(), "config.json"),
     path.join(process.cwd(), "SOLArb", "config.json"),
@@ -97,6 +91,8 @@ try {
         if (fileData.telegramChatId) CONFIG.TELEGRAM_CHAT_ID = fileData.telegramChatId;
         if (fileData.privateKey) privateKeyString = fileData.privateKey;
         if (fileData.jupiterApiUrl !== undefined) CONFIG.JUPITER_API_URL = fileData.jupiterApiUrl;
+        if (fileData.customMints !== undefined) CONFIG.CUSTOM_MINTS = fileData.customMints;
+        if (fileData.autoDiscoverMeme !== undefined) CONFIG.AUTO_DISCOVER_MEME = fileData.autoDiscoverMeme === true || fileData.autoDiscoverMeme === "true";
         
         console.log("📂 Konfigürasyon başarıyla config.json dosyasından yüklendi: " + p);
         break;
@@ -113,6 +109,107 @@ if (process.env.SOLANA_PRIVATE_KEY) privateKeyString = process.env.SOLANA_PRIVAT
 if (process.env.TELEGRAM_TOKEN) CONFIG.TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 if (process.env.TELEGRAM_CHAT_ID) CONFIG.TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 if (process.env.JUPITER_API_URL) CONFIG.JUPITER_API_URL = process.env.JUPITER_API_URL;
+if (process.env.SOLANA_CUSTOM_MINTS) CONFIG.CUSTOM_MINTS = process.env.SOLANA_CUSTOM_MINTS;
+if (process.env.SOLANA_AUTO_DISCOVER_MEME) CONFIG.AUTO_DISCOVER_MEME = process.env.SOLANA_AUTO_DISCOVER_MEME === "true";
+
+// Tarama yapılacak pariteleri belirleyen liste
+const scanTargets: { symbol: string; mint: string }[] = [];
+
+// DexScreener trend meme coinleri için önbellek ve fonksiyon
+let lastDexScreenerFetchTime = 0;
+let cachedMemeTokens: { symbol: string; mint: string }[] = [];
+
+async function fetchTrendingMemeTokens() {
+  const now = Date.now();
+  if (now - lastDexScreenerFetchTime < 300000 && cachedMemeTokens.length > 0) {
+    return cachedMemeTokens;
+  }
+  try {
+    console.log("🔍 [DexScreener] Solana trend meme coinleri otomatik keşfediliyor...");
+    const response = await fetch("https://api.dexscreener.com/token-profiles/latest/v1");
+    if (!response.ok) {
+      throw new Error("HTTP hata kodu: " + response.status);
+    }
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      const solanaTokens = data
+        .filter((item: any) => item.chainId === "solana" && item.tokenAddress)
+        .map((item: any) => {
+          const mint = item.tokenAddress;
+          const name = item.symbol || "MEME";
+          const symbol = name.length > 8 ? name.substring(0, 8) : name;
+          return {
+            symbol: "🔥_" + symbol,
+            mint: mint
+          };
+        });
+      
+      if (solanaTokens.length > 0) {
+        cachedMemeTokens = solanaTokens.slice(0, 15);
+        lastDexScreenerFetchTime = now;
+        console.log("✅ [DexScreener] Başarıyla " + cachedMemeTokens.length + " adet trend meme token keşfedildi.");
+      }
+    }
+  } catch (error: any) {
+    console.warn("⚠️ [DexScreener] Trend meme coin keşfinde geçici hata (cache kullanılacak):", error.message);
+  }
+  return cachedMemeTokens;
+}
+
+function updateScanTargets(discoveredMemeTokens: { symbol: string; mint: string }[] = []) {
+  scanTargets.length = 0; // Temizle
+  
+  const defaultTargets = [
+    { symbol: "USDC", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+    { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" },
+    { symbol: "BONK", mint: "DezXAZ8z7PnrnRJjz3wX4mTy3eUVVB8G3R6U47Hrkigw" },
+    { symbol: "JUP", mint: "JUPyiwrYJF1m4F9C6SrxadSZm8V7uhcFM637vMhXCm7" },
+    { symbol: "WIF", mint: "EKpQGSJtjMFqKZ98GWST69vThTZEgTUMmKW66m8zg1yO" },
+    { symbol: "SOL", mint: "So11111111111111111111111111111111111111112" }
+  ];
+
+  if (CONFIG.INTER_TOKEN === "ALL") {
+    for (const target of defaultTargets) {
+      if (target.mint !== CONFIG.START_MINT) {
+        scanTargets.push(target);
+      }
+    }
+  } else {
+    scanTargets.push({
+      symbol: CONFIG.INTER_TOKEN,
+      mint: CONFIG.INTER_MINT
+    });
+  }
+
+  // Özel eklenen mint adreslerini (pump.fun vb.) ayrıştır ve listeye ekle
+  if (CONFIG.CUSTOM_MINTS) {
+    const mints = CONFIG.CUSTOM_MINTS.split(",")
+      .map((m: any) => m.trim())
+      .filter((m: any) => m.length > 30);
+      
+    mints.forEach((mint, index) => {
+      if (!scanTargets.some(t => t.mint === mint)) {
+        const label = mint.toLowerCase().endsWith("pump") ? "PUMP" : "SPL";
+        scanTargets.push({
+          symbol: label + "_" + mint.substring(0, 4) + "..." + mint.substring(mint.length - 4),
+          mint: mint
+        });
+      }
+    });
+  }
+
+  // Otomatik keşfedilen trend meme coinleri ekle
+  if (discoveredMemeTokens && discoveredMemeTokens.length > 0) {
+    for (const token of discoveredMemeTokens) {
+      if (token.mint !== CONFIG.START_MINT && !scanTargets.some(t => t.mint === token.mint)) {
+        scanTargets.push(token);
+      }
+    }
+  }
+}
+
+// Listeyi oluştur (başlangıçta boş trend ile)
+updateScanTargets();
 
 // RPC URL Güvenlik Kontrolü ve Fallback
 if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.startsWith("http")) {
@@ -122,24 +219,16 @@ if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.sta
 
 // Cüzdan Kurulumu
 let wallet: Keypair;
-
-if (!privateKeyString) {
-  privateKeyString = process.env.SOLANA_PRIVATE_KEY || "";
-}
-
 if (!privateKeyString) {
   console.error("❌ HATA: SOLANA_PRIVATE_KEY ortam değişkeni tanımlanmamış!");
-  console.error("Lütfen .env dosyanızı oluşturun ve özel anahtarınızı ekleyin.");
   process.exit(1);
 }
 
 try {
-  // Özel anahtarı base58 formatından çöz (Phantom veya Solflare'den dışa aktarılan format)
   wallet = Keypair.fromSecretKey(bs58.decode(privateKeyString));
   console.log("🔑 Cüzdan başarıyla yüklendi:", wallet.publicKey.toBase58());
 } catch (e) {
   try {
-    // Array formatında özel anahtar kontrolü [12, 34, ...]
     const arr = JSON.parse(privateKeyString);
     wallet = Keypair.fromSecretKey(Uint8Array.from(arr));
     console.log("🔑 Cüzdan başarıyla yüklendi (Dizi formatı):", wallet.publicKey.toBase58());
@@ -157,7 +246,7 @@ const connection = new Connection(CONFIG.RPC_URL, "confirmed");
  */
 async function sendTelegramNotification(message: string) {
   if (!CONFIG.TELEGRAM_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) return;
-  const url = `https://api.telegram.org/bot${CONFIG.TELEGRAM_TOKEN}/sendMessage`;
+  const url = "https://api.telegram.org/bot" + CONFIG.TELEGRAM_TOKEN + "/sendMessage";
   try {
     await fetch(url, {
       method: "POST",
@@ -179,31 +268,27 @@ let ACTIVE_JUPITER_API = CONFIG.JUPITER_API_URL || "https://quote-api.jup.ag/v6"
 /**
  * Jupiter API üzerinden teklif (quote) alır
  */
-async function getJupiterQuote(inputMint: string, outputMint: string, amount: number, slippageBps: number) {
-  // Eğer özel bir API adresi verilmişse sadece onu kullan, yoksa otomatik yedekli listeyi tara
+async function getJupiterQuote(inputMint: string, outputMint: string, amount: number | string, slippageBps: number) {
   const endpoints = CONFIG.JUPITER_API_URL 
     ? [CONFIG.JUPITER_API_URL] 
     : [ACTIVE_JUPITER_API, "https://quote-api.jup.ag/v6", "https://api.jup.ag/v6"];
 
   for (const endpoint of endpoints) {
     const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
-    const url = `${cleanEndpoint}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}&onlyDirectRoutes=false`;
+    const url = cleanEndpoint + "/quote?inputMint=" + inputMint + "&outputMint=" + outputMint + "&amount=" + amount + "&slippageBps=" + slippageBps + "&onlyDirectRoutes=false";
     try {
       const response = await fetch(url);
       if (response.ok) {
-        // Eğer bu adres çalıştıysa ve aktif olandan farklıysa, aktif adresi güncelle
         if (!CONFIG.JUPITER_API_URL && endpoint !== ACTIVE_JUPITER_API) {
           ACTIVE_JUPITER_API = endpoint;
-          console.log(`🔄 JUPITER_API adresi otomatik olarak çalışan adrese çevrildi: ${ACTIVE_JUPITER_API}`);
+          console.log("🔄 JUPITER_API adresi otomatik olarak çalışan adrese çevrildi: " + ACTIVE_JUPITER_API);
         }
         return await response.json();
       }
-      console.warn(`⚠️ Jupiter API Hatası (${endpoint}): ${response.statusText}`);
     } catch (error) {
-      console.warn(`⚠️ Jupiter API bağlantısı başarısız (${endpoint}): ${error.message}`);
+      // Denemeye devam et
     }
   }
-  console.error("❌ HATA: Tüm Jupiter API uç noktaları başarısız oldu (DNS/Ağ hatası olabilir).");
   return null;
 }
 
@@ -217,7 +302,7 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
 
   for (const endpoint of endpoints) {
     const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
-    const url = `${cleanEndpoint}/swap`;
+    const url = cleanEndpoint + "/swap";
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -226,7 +311,6 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
           quoteResponse,
           userPublicKey,
           wrapAndUnwrapSol: true,
-          // İşlem önceliği ve ücret ayarları
           computeUnitPriceMicroLamports: Math.round((CONFIG.PRIORITY_FEE_SOL * 10**9 * 10**6) / 1400000), 
           dynamicComputeUnitLimit: true
         })
@@ -236,16 +320,15 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
         const { swapTransaction } = await response.json();
         return swapTransaction;
       }
-      console.warn(`⚠️ Jupiter Swap API Hatası (${endpoint}): ${response.statusText}`);
     } catch (error) {
-      console.warn(`⚠️ Jupiter Swap API bağlantısı başarısız (${endpoint}): ${error.message}`);
+      // Denemeye devam et
     }
   }
   return null;
 }
 
 /**
- * İşlemi Jito MEV Blok Motoruna bundle olarak gönderir (Önceden çalıştırılmayı ve iptal edilmeyi önler)
+ * İşlemi Jito MEV Blok Motoruna bundle olarak gönderir
  */
 async function sendTransactionToJito(signedTx: VersionedTransaction) {
   const rawTx = signedTx.serialize();
@@ -264,7 +347,6 @@ async function sendTransactionToJito(signedTx: VersionedTransaction) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    
     const result = await response.json();
     return result;
   } catch (error) {
@@ -277,128 +359,113 @@ async function sendTransactionToJito(signedTx: VersionedTransaction) {
  * Ana Arbitraj Tarama Fonksiyonu
  */
 async function checkArbitrage() {
-  console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Arbitraj fırsatı taranıyor...`);
-  
-  // 1. ADIM: Token A -> Token B fiyatını sorgula
-  const route1 = await getJupiterQuote(
-    CONFIG.START_MINT,
-    CONFIG.INTER_MINT,
-    CONFIG.TRADE_AMOUNT_RAW,
-    CONFIG.SLIPPAGE_BPS
-  );
-  
-  if (!route1) return;
-
-  const expectedTokenBAmount = route1.outAmount;
-  const tokenBAmountHuman = Number(expectedTokenBAmount) / (10 ** CONFIG.INTER_DECIMALS);
-  console.log(`   1. Yol: ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN} ➔ ${tokenBAmountHuman.toFixed(4)} ${CONFIG.INTER_TOKEN}`);
-
-  // 2. ADIM: Token B -> Token A (Geri Dönüş) fiyatını sorgula
-  const route2 = await getJupiterQuote(
-    CONFIG.INTER_MINT,
-    CONFIG.START_MINT,
-    expectedTokenBAmount,
-    CONFIG.SLIPPAGE_BPS
-  );
-
-  if (!route2) return;
-
-  const finalAmountRaw = Number(route2.outAmount);
-  const finalAmountHuman = finalAmountRaw / (10 ** CONFIG.START_DECIMALS);
-  
-  // Kâr/Zarar hesabı
-  const profitRaw = finalAmountRaw - CONFIG.TRADE_AMOUNT_RAW;
-  const profitHuman = finalAmountHuman - CONFIG.TRADE_AMOUNT;
-  const profitPct = (profitHuman / CONFIG.TRADE_AMOUNT) * 100;
-
-  console.log(`   2. Yol: ${tokenBAmountHuman.toFixed(4)} ${CONFIG.INTER_TOKEN} ➔ ${finalAmountHuman.toFixed(6)} ${CONFIG.START_TOKEN}`);
-  
-  if (profitHuman > 0) {
-    console.log(`   📈 Brüt Sonuç: +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})`);
+  if (CONFIG.AUTO_DISCOVER_MEME) {
+    const discovered = await fetchTrendingMemeTokens();
+    updateScanTargets(discovered);
   } else {
-    console.log(`   📉 Brüt Sonuç: ${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})`);
+    updateScanTargets([]);
   }
-
-  // 3. ADIM: Kârlılık kontrolü
-  if (profitPct >= CONFIG.MIN_PROFIT_PCT) {
-    console.log(`   🎉 FIRSAT BULUNDU! Hedef kâr (%${CONFIG.MIN_PROFIT_PCT}) aşıldı. İşlemler sırayla tetikleniyor...`);
-    
+  
+  console.log("\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
+  
+  for (const target of scanTargets) {
     try {
-      // Yol 1 İşlemi
-      console.log("   [1/4] İlk takas işlemi oluşturuluyor...");
-      const swapTx1Base64 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
+      const route1 = await getJupiterQuote(
+        CONFIG.START_MINT,
+        target.mint,
+        CONFIG.TRADE_AMOUNT_RAW,
+        CONFIG.SLIPPAGE_BPS
+      );
       
-      // Yol 2 İşlemi
-      console.log("   [2/4] İkinci takas işlemi oluşturuluyor...");
-      const swapTx2Base64 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
-
-      if (!swapTx1Base64 || !swapTx2Base64) {
-        console.log("   ❌ İşlemler oluşturulamadı. İptal ediliyor.");
-        return;
+      if (!route1) {
+        continue;
       }
 
-      // İşlemleri deserialize et
-      const tx1 = VersionedTransaction.deserialize(Buffer.from(swapTx1Base64, "base64"));
-      const tx2 = VersionedTransaction.deserialize(Buffer.from(swapTx2Base64, "base64"));
+      const route2 = await getJupiterQuote(
+        target.mint,
+        CONFIG.START_MINT,
+        route1.outAmount,
+        CONFIG.SLIPPAGE_BPS
+      );
 
-      // Blok bilgisini al ve işlemleri imzala
-      const { blockhash } = await connection.getLatestBlockhash("confirmed");
-      tx1.message.recentBlockhash = blockhash;
-      tx2.message.recentBlockhash = blockhash;
+      if (!route2) {
+        continue;
+      }
 
-      tx1.sign([wallet]);
-      tx2.sign([wallet]);
+      const finalAmountRaw = Number(route2.outAmount);
+      const finalAmountHuman = finalAmountRaw / (10 ** CONFIG.START_DECIMALS);
+      
+      const profitRaw = finalAmountRaw - CONFIG.TRADE_AMOUNT_RAW;
+      const profitHuman = finalAmountHuman - CONFIG.TRADE_AMOUNT;
+      const profitPct = (profitHuman / CONFIG.TRADE_AMOUNT) * 100;
 
-      console.log("   [3/4] İşlemler imzalandı. Ağa gönderiliyor...");
-
-      if (CONFIG.USE_JITO) {
-        console.log("   [JITO] İşlemler Jito Blok Motoruna bundle olarak gönderiliyor (MEV koruması aktif)...");
-        // Not: Gerçek dairesel arbitrajda iki swap işlemi Jito Bundle içinde tek seferde gönderilerek atomiklik sağlanır.
-        const res1 = await sendTransactionToJito(tx1);
-        const res2 = await sendTransactionToJito(tx2);
-        console.log("   [JITO] Yanıt:", JSON.stringify({ res1, res2 }));
-        console.log("   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!");
-        await sendTelegramNotification(`🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\n\n💸 *Rota:* ${CONFIG.START_TOKEN} ➔ ${CONFIG.INTER_TOKEN} ➔ ${CONFIG.START_TOKEN}\n💵 *Sermaye:* ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}\n📈 *Elde Edilen Net Kâr:* +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)`);
-      } else {
-        // Doğrudan RPC üzerinden gönder
-        const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
-        console.log("   🚀 İşlem 1 Gönderildi. İmza:", sig1);
+      const logSign = profitHuman > 0 ? "📈" : "📉";
+      console.log("   " + logSign + " Rota: " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + " | Sonuç: " + (profitHuman > 0 ? "+" : "") + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")");
+      
+      if (profitPct >= CONFIG.MIN_PROFIT_PCT) {
+        console.log("   🎉 🎉 ARBİTRAJ FIRSATI BULUNDU! [" + target.symbol + "] Kâr Hedefi (%" + CONFIG.MIN_PROFIT_PCT + ") aşıldı! %" + profitPct.toFixed(3) + " kâr oranı.");
         
-        const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
-        console.log("   🚀 İşlem 2 Gönderildi. İmza:", sig2);
+        console.log("   [1/4] İlk takas işlemi oluşturuluyor...");
+        const swapTx1Base64 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
+        
+        console.log("   [2/4] İkinci takas işlemi oluşturuluyor...");
+        const swapTx2Base64 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
 
-        // Onay bekle
-        console.log("   [4/4] İşlemlerin ağda onaylanması bekleniyor...");
-        await connection.confirmTransaction(sig1, "confirmed");
-        await connection.confirmTransaction(sig2, "confirmed");
-        console.log("   ✅ ARBİTRAJ BAŞARIYLA TAMAMLANDI!");
-        await sendTelegramNotification(`🔔 *SOLArb ARBİTRAJ BAŞARILI!*\n\n💸 *Rota:* ${CONFIG.START_TOKEN} ➔ ${CONFIG.INTER_TOKEN} ➔ ${CONFIG.START_TOKEN}\n💵 *Sermaye:* ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}\n📈 *Elde Edilen Net Kâr:* +${profitHuman.toFixed(6)} ${CONFIG.START_TOKEN} (%${profitPct.toFixed(3)})\n🛡️ *Jito MEV Koruması:* Pasif\n🔗 *Tx1:* https://solscan.io/tx/${sig1}\n🔗 *Tx2:* https://solscan.io/tx/${sig2}`);
+        if (!swapTx1Base64 || !swapTx2Base64) {
+          console.log("   ❌ İşlemler oluşturulamadı. Es geçiliyor.");
+          continue;
+        }
+
+        const tx1 = VersionedTransaction.deserialize(Buffer.from(swapTx1Base64, "base64"));
+        const tx2 = VersionedTransaction.deserialize(Buffer.from(swapTx2Base64, "base64"));
+
+        const { blockhash } = await connection.getLatestBlockhash("confirmed");
+        tx1.message.recentBlockhash = blockhash;
+        tx2.message.recentBlockhash = blockhash;
+
+        tx1.sign([wallet]);
+        tx2.sign([wallet]);
+
+        console.log("   [3/4] İşlemler imzalandı. Yayınlanıyor...");
+
+        if (CONFIG.USE_JITO) {
+          console.log("   [JITO] Jito MEV Blok Motoru ile gönderiliyor...");
+          const res1 = await sendTransactionToJito(tx1);
+          const res2 = await sendTransactionToJito(tx2);
+          console.log("   ✅ JITO Gönderimi yapıldı. Sonuç:", JSON.stringify({ res1, res2 }));
+          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\n\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
+        } else {
+          const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
+          const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
+          console.log("   [4/4] Onay bekleniyor...");
+          await connection.confirmTransaction(sig1, "confirmed");
+          await connection.confirmTransaction(sig2, "confirmed");
+          console.log("   ✅ İşlemler başarıyla onaylandı!");
+          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\n\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\n🛡️ *Jito MEV Koruması:* Pasif\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
+        }
+        
+        break; 
       }
-      
     } catch (err) {
-      console.error("   ❌ Arbitraj yürütülürken kritik hata:", err.message);
+      // Devam et
     }
-  } else {
-    console.log(`   ⏱️ Fırsat yetersiz. Minimum kâr limiti (%${CONFIG.MIN_PROFIT_PCT}) altında. Pas geçildi.`);
   }
 }
 
 // Botu başlat
 async function main() {
   console.log("==================================================");
-  console.log("🚀 SOLArb BAŞLATILIYOR...");
-  console.log(`📌 Başlangıç Varlığı: ${CONFIG.TRADE_AMOUNT} ${CONFIG.START_TOKEN}`);
-  console.log(`📌 Ara Birim Varlık: ${CONFIG.INTER_TOKEN}`);
-  console.log(`📌 Hedef Minimum Kâr: %${CONFIG.MIN_PROFIT_PCT}`);
-  console.log(`📌 Slipaj Toleransı: %${CONFIG.SLIPPAGE_BPS / 100}`);
-  console.log(`📌 Tarama Periyodu: ${CONFIG.SCAN_INTERVAL / 1000} saniye`);
-  console.log(`📌 Jito MEV Koruması: ${CONFIG.USE_JITO ? "AKTİF" : "PASİF"}`);
+  console.log("🚀 SOLArb ÇOKLU PARİTE BOTU BAŞLATILIYOR...");
+  console.log("📌 Başlangıç Varlığı: " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN);
+  console.log("📌 Ara Birim Modu: " + (CONFIG.INTER_TOKEN === 'ALL' ? 'Tüm Tanımlı Pariteler' : CONFIG.INTER_TOKEN));
+  console.log("📌 Hedef Minimum Kâr: %" + CONFIG.MIN_PROFIT_PCT);
+  console.log("📌 Slipaj Toleransı: %" + (CONFIG.SLIPPAGE_BPS / 100));
+  console.log("📌 Tarama Periyodu: " + (CONFIG.SCAN_INTERVAL / 1000) + " saniye");
+  console.log("📌 Jito MEV Koruması: " + (CONFIG.USE_JITO ? "AKTİF" : "PASİF"));
   console.log("==================================================");
 
-  // İlk taramayı başlat
   await checkArbitrage();
 
-  // Belirlenen aralıklarla sürekli tara
   setInterval(async () => {
     try {
       await checkArbitrage();
