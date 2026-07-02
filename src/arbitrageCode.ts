@@ -75,9 +75,9 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
-import dns from "dns";
-import fs from "fs";
-import path from "path";
+import * as dns from "dns";
+import * as fs from "fs";
+import * as path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -429,7 +429,7 @@ async function checkArbitrage() {
     updateScanTargets([]);
   }
   
-  console.log("\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
+  console.log("\\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
   
   for (const target of scanTargets) {
     try {
@@ -496,7 +496,7 @@ async function checkArbitrage() {
           const res1 = await sendTransactionToJito(tx1);
           const res2 = await sendTransactionToJito(tx2);
           console.log("   ✅ JITO Gönderimi yapıldı. Sonuç:", JSON.stringify({ res1, res2 }));
-          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\n\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
+          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
         } else {
           const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
           const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
@@ -504,7 +504,7 @@ async function checkArbitrage() {
           await connection.confirmTransaction(sig1, "confirmed");
           await connection.confirmTransaction(sig2, "confirmed");
           console.log("   ✅ İşlemler başarıyla onaylandı!");
-          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\n\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\n🛡️ *Jito MEV Koruması:* Pasif\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
+          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
         }
         
         break; 

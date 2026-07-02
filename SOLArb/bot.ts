@@ -12,9 +12,9 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
-import dns from "dns";
-import fs from "fs";
-import path from "path";
+import * as dns from "dns";
+import * as fs from "fs";
+import * as path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -366,7 +366,7 @@ async function checkArbitrage() {
     updateScanTargets([]);
   }
   
-  console.log("\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
+  console.log("🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
   
   for (const target of scanTargets) {
     try {
