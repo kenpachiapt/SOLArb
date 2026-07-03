@@ -12,7 +12,7 @@ if (dns && typeof dns.setDefaultResultOrder === "function") {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
 
   // Body parser for JSON
   app.use(express.json({ limit: '10mb' }));

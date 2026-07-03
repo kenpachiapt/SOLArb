@@ -208,7 +208,7 @@ async function fetchTrendingMemeTokens() {
         });
       
       if (solanaTokens.length > 0) {
-        cachedMemeTokens = solanaTokens.slice(0, 15);
+        cachedMemeTokens = solanaTokens.slice(0, 45);
         lastDexScreenerFetchTime = now;
         console.log("✅ [DexScreener] Başarıyla " + cachedMemeTokens.length + " adet trend meme token keşfedildi.");
       }
@@ -228,7 +228,15 @@ function updateScanTargets(discoveredMemeTokens: { symbol: string; mint: string 
     { symbol: "BONK", mint: "DezXAZ8z7PnrnRJjz3wX4mTy3eUVVB8G3R6U47Hrkigw" },
     { symbol: "JUP", mint: "JUPyiwrYJF1m4F9C6SrxadSZm8V7uhcFM637vMhXCm7" },
     { symbol: "WIF", mint: "EKpQGSJtjMFqKZ98GWST69vThTZEgTUMmKW66m8zg1yO" },
-    { symbol: "SOL", mint: "So11111111111111111111111111111111111111112" }
+    { symbol: "SOL", mint: "So11111111111111111111111111111111111111112" },
+    { symbol: "RAY", mint: "4k3Dyjzv268fZU37fNgs9S4D276g6N65454g6Wb1b9" },
+    { symbol: "JTO", mint: "jtoJSonaZ7Y9au29jAnG8HjA21YToa96mTmeN9xH9A5" },
+    { symbol: "PYTH", mint: "HZ128fv7S275ChFG67BtNfY2CGmqmDscvv3vG185134r" },
+    { symbol: "POPCAT", mint: "7GCih6b4G6HscbyczHzQ2uwKs64RNFrzXUsVAX8pump" },
+    { symbol: "BOME", mint: "ukHH6c7mY6Mpe2Sg6Hg983CNZfXUzayCiwfCfRFQ98P" },
+    { symbol: "MEW", mint: "MEW1gQW8En8M9ScVv7ZrxM84JrgA9khf24GcH8Y6W9" },
+    { symbol: "DRIFT", mint: "DriFtupZv61Yja6fUc6v9PUt7XWxt78dM9sNY5Z28yf" },
+    { symbol: "KMNO", mint: "KMNo71gY6iSTmHSpEBnSTGh9V665fBsi63pUf39b6fP" }
   ];
 
   if (CONFIG.INTER_TOKEN === "ALL") {

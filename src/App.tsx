@@ -150,15 +150,20 @@ export default function App() {
     const fetchBotStatus = async () => {
       try {
         const response = await fetch('/api/bot/status');
-        const data = await response.json();
-        if (data.success) {
-          setRealBotRunning(data.running);
-          if (data.logs) {
-            setRealBotLogs(data.logs);
+        if (!response.ok) return;
+        
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          if (data.success) {
+            setRealBotRunning(data.running);
+            if (data.logs) {
+              setRealBotLogs(data.logs);
+            }
           }
         }
       } catch (err) {
-        console.error("Bot durumu alınamadı:", err);
+        // Silently handle transient network/polling errors during app boot/restart
       }
     };
 
