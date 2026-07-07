@@ -106,7 +106,19 @@ async function startServer() {
         return res.status(400).json({ error: "walletAddress parametresi gerekli." });
       }
 
-      const connectionUrl = (rpcUrl as string) || "https://api.mainnet-beta.solana.com";
+      let connectionUrl = (rpcUrl as string) || "";
+      if (connectionUrl === "undefined" || connectionUrl === "null") {
+        connectionUrl = "";
+      }
+      
+      connectionUrl = connectionUrl.trim();
+      
+      if (!connectionUrl) {
+        connectionUrl = "https://api.mainnet-beta.solana.com";
+      } else if (!connectionUrl.startsWith("http://") && !connectionUrl.startsWith("https://")) {
+        connectionUrl = "https://" + connectionUrl;
+      }
+
       const connection = new Connection(connectionUrl, "confirmed");
       let pubKey: PublicKey;
       

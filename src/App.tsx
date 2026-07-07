@@ -190,8 +190,9 @@ export default function App() {
     }
     setIsSpyScanning(true);
     setSpyError('');
+    const activeRpc = rpcUrl ? rpcUrl.trim() : 'https://api.mainnet-beta.solana.com';
     try {
-      const response = await fetch(`/api/spy-wallet?walletAddress=${encodeURIComponent(spyWalletAddress)}&rpcUrl=${encodeURIComponent(rpcUrl)}`);
+      const response = await fetch(`/api/spy-wallet?walletAddress=${encodeURIComponent(spyWalletAddress)}&rpcUrl=${encodeURIComponent(activeRpc)}`);
       const data = await response.json();
       if (response.ok && data.success) {
         setSpyDiscoveredTokens(data.tokens || []);
