@@ -106,68 +106,123 @@ async function startServer() {
         return res.status(400).json({ error: "walletAddress parametresi gerekli." });
       }
 
-      let connectionUrl = (rpcUrl as string) || "";
-      if (connectionUrl === "undefined" || connectionUrl === "null") {
-        connectionUrl = "";
+      let userRpc = (rpcUrl as string) || "";
+      if (userRpc === "undefined" || userRpc === "null") {
+        userRpc = "";
       }
-      
-      connectionUrl = connectionUrl.trim();
-      
-      if (!connectionUrl) {
-        connectionUrl = "https://api.mainnet-beta.solana.com";
-      } else if (!connectionUrl.startsWith("http://") && !connectionUrl.startsWith("https://")) {
-        connectionUrl = "https://" + connectionUrl;
+      userRpc = userRpc.trim();
+      if (userRpc && !userRpc.startsWith("http://") && !userRpc.startsWith("https://")) {
+        userRpc = "https://" + userRpc;
       }
 
-      const connection = new Connection(connectionUrl, "confirmed");
       let pubKey: PublicKey;
-      
       try {
         pubKey = new PublicKey(walletAddress as string);
       } catch (err) {
         return res.status(400).json({ error: "Geçersiz Solana cüzdan adresi formatı." });
       }
 
-      // Get recent transaction signatures
-      console.log(`[Cüzdan Casusu] ${pubKey.toBase58()} cüzdanı için son işlemler çekiliyor...`);
-      const signatures = await connection.getSignaturesForAddress(pubKey, { limit: 12 });
-      if (signatures.length === 0) {
+      const uniqueMints = new Set<string>();
+
+      // Robust RPC runner with fallbacks to bypass public node limits
+      const runWithRpcFallback = async (fn: (connection: Connection) => Promise<void>) => {
+        const fallbacks = [
+          userRpc,
+          "https://api.ankr.com/solana",
+          "https://rpc.ankr.com/solana",
+          "https://solana.public-rpc.com",
+          "https://solana-mainnet.g.allthatnode.com",
+          "https://api.mainnet-beta.solana.com"
+        ].filter(url => url && url.startsWith("http"));
+
+        const uniqueUrls = Array.from(new Set(fallbacks));
+        let lastError: any = null;
+
+        for (const url of uniqueUrls) {
+          try {
+            console.log(`[Cüzdan Casusu] RPC bağlanıyor: ${url}`);
+            const connection = new Connection(url, "confirmed");
+            await fn(connection);
+            console.log(`[Cüzdan Casusu] RPC başarılı: ${url}`);
+            return; // Successfully executed, stop trying other RPCs
+          } catch (err: any) {
+            console.warn(`[Cüzdan Casusu] RPC Hatası (${url}):`, err.message || err);
+            lastError = err;
+          }
+        }
+        throw lastError || new Error("Tüm Solana RPC sunucuları başarısız oldu.");
+      };
+
+      // 1. Try to fetch token accounts by owner (extremely fast, lightweight, and highly reliable)
+      try {
+        await runWithRpcFallback(async (connection) => {
+          console.log(`[Cüzdan Casusu] Cüzdan token hesapları çekiliyor...`);
+          const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+          const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, {
+            programId: TOKEN_PROGRAM_ID
+          });
+
+          if (tokenAccounts && tokenAccounts.value) {
+            for (const acc of tokenAccounts.value) {
+              const info = acc.account.data.parsed?.info;
+              if (info && info.mint) {
+                const mint = info.mint;
+                // Ignore SOL, USDC, USDT
+                if (
+                  mint !== "So11111111111111111111111111111111111111112" &&
+                  mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
+                  mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+                ) {
+                  uniqueMints.add(mint);
+                }
+              }
+            }
+          }
+        });
+      } catch (tokenAccError: any) {
+        console.warn("[Cüzdan Casusu] Token hesapları alınamadı:", tokenAccError.message || tokenAccError);
+      }
+
+      // 2. Try to fetch recent transactions (limit 12) for historical/recent trades, wrapped so it fails silently if blocked
+      try {
+        await runWithRpcFallback(async (connection) => {
+          console.log(`[Cüzdan Casusu] Son işlemler çekiliyor...`);
+          const signatures = await connection.getSignaturesForAddress(pubKey, { limit: 12 });
+          if (signatures && signatures.length > 0) {
+            const txSignatures = signatures.map((s) => s.signature);
+            const parsedTxes = await connection.getParsedTransactions(txSignatures, {
+              maxSupportedTransactionVersion: 0,
+              commitment: "confirmed"
+            });
+
+            for (const tx of parsedTxes) {
+              if (!tx || !tx.meta) continue;
+              const preBalances = tx.meta.preTokenBalances || [];
+              const postBalances = tx.meta.postTokenBalances || [];
+              for (const balance of [...preBalances, ...postBalances]) {
+                if (balance && balance.mint) {
+                  const mint = balance.mint;
+                  if (
+                    mint !== "So11111111111111111111111111111111111111112" &&
+                    mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
+                    mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+                  ) {
+                    uniqueMints.add(mint);
+                  }
+                }
+              }
+            }
+          }
+        });
+      } catch (txError: any) {
+        console.warn("[Cüzdan Casusu] Son işlemler ayrıştırılamadı:", txError.message || txError);
+      }
+
+      if (uniqueMints.size === 0) {
         return res.json({ success: true, tokens: [] });
       }
 
-      const txSignatures = signatures.map((s) => s.signature);
-      
-      // Fetch detailed parsed transactions
-      const parsedTxes = await connection.getParsedTransactions(txSignatures, {
-        maxSupportedTransactionVersion: 0,
-        commitment: "confirmed"
-      });
-
-      const uniqueMints = new Set<string>();
-
-      for (const tx of parsedTxes) {
-        if (!tx || !tx.meta) continue;
-
-        // Extract from token balances
-        const preBalances = tx.meta.preTokenBalances || [];
-        const postBalances = tx.meta.postTokenBalances || [];
-
-        for (const balance of [...preBalances, ...postBalances]) {
-          if (balance && balance.mint) {
-            const mint = balance.mint;
-            // Ignore SOL and standard stablecoins
-            if (
-              mint !== "So11111111111111111111111111111111111111112" && // SOL
-              mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" && // USDC
-              mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"    // USDT
-            ) {
-              uniqueMints.add(mint);
-            }
-          }
-        }
-      }
-
-      // Now, query DexScreener to get symbols and names of these mints in bulk
+      // Now query DexScreener to get symbols and names of these mints in bulk
       const mintList = Array.from(uniqueMints).slice(0, 30); // limit to top 30
       const discoveredTokens: { symbol: string; mint: string; name: string; price?: string }[] = [];
 
@@ -197,7 +252,7 @@ async function startServer() {
         } catch (e) {
           console.warn("[Cüzdan Casusu] DexScreener API zenginleştirme hatası:", e);
         }
-        
+
         // For any mints that DexScreener didn't return, add them with default UNKNOWN symbol
         for (const mint of mintList) {
           const alreadyAdded = discoveredTokens.some((t) => t.mint === mint);
@@ -217,7 +272,7 @@ async function startServer() {
         tokens: discoveredTokens
       });
     } catch (error: any) {
-      console.error("[Cüzdan Casusu] Hata oluştu:", error);
+      console.error("[Cüzdan Casusu] Genel Hata oluştu:", error);
       res.status(500).json({ error: error.message || "Casus cüzdan verileri çekilemedi." });
     }
   });
