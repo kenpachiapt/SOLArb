@@ -14,6 +14,8 @@ export interface BotOptions {
   jupiterApiUrl?: string;
   customMints?: string;
   autoDiscoverMeme?: boolean;
+  spyWalletAddress?: string;
+  autoSpyWallet?: boolean;
 }
 
 export const TOKEN_MINTS = {
@@ -50,7 +52,9 @@ export function generateArbitrageCode(options: BotOptions): string {
     privateKey,
     jupiterApiUrl,
     customMints,
-    autoDiscoverMeme
+    autoDiscoverMeme,
+    spyWalletAddress,
+    autoSpyWallet
   } = options;
 
   const startMint = TOKEN_MINTS[startToken] || TOKEN_MINTS.SOL;
@@ -72,7 +76,6 @@ export function generateArbitrageCode(options: BotOptions): string {
  */
 
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
-import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
 import * as dns from "dns";
@@ -121,7 +124,9 @@ const CONFIG = {
   TELEGRAM_CHAT_ID: "${telegramChatId || ''}",
   
   CUSTOM_MINTS: "${customMints || ''}",
-  AUTO_DISCOVER_MEME: ${autoDiscoverMeme === undefined ? true : autoDiscoverMeme}
+  AUTO_DISCOVER_MEME: ${autoDiscoverMeme === undefined ? true : autoDiscoverMeme},
+  SPY_WALLET_ADDRESS: "${spyWalletAddress || ''}",
+  AUTO_SPY_WALLET: ${autoSpyWallet === undefined ? false : autoSpyWallet}
 };
 
 let privateKeyString = "${privateKey || ''}";
@@ -156,6 +161,8 @@ try {
         if (fileData.jupiterApiUrl !== undefined) CONFIG.JUPITER_API_URL = fileData.jupiterApiUrl;
         if (fileData.customMints !== undefined) CONFIG.CUSTOM_MINTS = fileData.customMints;
         if (fileData.autoDiscoverMeme !== undefined) CONFIG.AUTO_DISCOVER_MEME = fileData.autoDiscoverMeme === true || fileData.autoDiscoverMeme === "true";
+        if (fileData.spyWalletAddress !== undefined) CONFIG.SPY_WALLET_ADDRESS = fileData.spyWalletAddress;
+        if (fileData.autoSpyWallet !== undefined) CONFIG.AUTO_SPY_WALLET = fileData.autoSpyWallet === true || fileData.autoSpyWallet === "true";
         
         console.log("📂 Konfigürasyon başarıyla config.json dosyasından yüklendi: " + p);
         break;
@@ -174,6 +181,8 @@ if (process.env.TELEGRAM_CHAT_ID) CONFIG.TELEGRAM_CHAT_ID = process.env.TELEGRAM
 if (process.env.JUPITER_API_URL) CONFIG.JUPITER_API_URL = process.env.JUPITER_API_URL;
 if (process.env.SOLANA_CUSTOM_MINTS) CONFIG.CUSTOM_MINTS = process.env.SOLANA_CUSTOM_MINTS;
 if (process.env.SOLANA_AUTO_DISCOVER_MEME) CONFIG.AUTO_DISCOVER_MEME = process.env.SOLANA_AUTO_DISCOVER_MEME === "true";
+if (process.env.SOLANA_SPY_WALLET_ADDRESS) CONFIG.SPY_WALLET_ADDRESS = process.env.SOLANA_SPY_WALLET_ADDRESS;
+if (process.env.SOLANA_AUTO_SPY_WALLET) CONFIG.AUTO_SPY_WALLET = process.env.SOLANA_AUTO_SPY_WALLET === "true";
 
 // Tarama yapılacak pariteleri belirleyen liste
 const scanTargets: { symbol: string; mint: string }[] = [];
@@ -217,6 +226,104 @@ async function fetchTrendingMemeTokens() {
     console.warn("⚠️ [DexScreener] Trend meme coin keşfinde geçici hata (cache kullanılacak):", error.message);
   }
   return cachedMemeTokens;
+}
+
+// Cüzdan Casusu ile balina cüzdanının aktif işlem yaptığı tokenleri keşfetme
+let lastSpyFetchTime = 0;
+let cachedSpyTokens: { symbol: string; mint: string }[] = [];
+
+async function discoverSpyWalletTokens() {
+  const now = Date.now();
+  if (now - lastSpyFetchTime < 600000 && cachedSpyTokens.length > 0) {
+    return cachedSpyTokens;
+  }
+  
+  if (!CONFIG.SPY_WALLET_ADDRESS) {
+    return [];
+  }
+
+  try {
+    console.log("🕵️ [Cüzdan Casusu] " + CONFIG.SPY_WALLET_ADDRESS + " cüzdanının son işlemleri taranıyor...");
+    const pubKey = new PublicKey(CONFIG.SPY_WALLET_ADDRESS);
+    const signatures = await connection.getSignaturesForAddress(pubKey, { limit: 12 });
+    if (signatures.length === 0) {
+      return [];
+    }
+
+    const txSignatures = signatures.map((s) => s.signature);
+    const parsedTxes = await connection.getParsedTransactions(txSignatures, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "confirmed"
+    });
+
+    const uniqueMints = new Set<string>();
+    for (const tx of parsedTxes) {
+      if (!tx || !tx.meta) continue;
+      const preBalances = tx.meta.preTokenBalances || [];
+      const postBalances = tx.meta.postTokenBalances || [];
+      for (const balance of [...preBalances, ...postBalances]) {
+        if (balance && balance.mint) {
+          const mint = balance.mint;
+          if (
+            mint !== "So11111111111111111111111111111111111111112" &&
+            mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
+            mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+          ) {
+            uniqueMints.add(mint);
+          }
+        }
+      }
+    }
+
+    const mintList = Array.from(uniqueMints).slice(0, 15);
+    const discovered: { symbol: string; mint: string }[] = [];
+
+    if (mintList.length > 0) {
+      try {
+        const dexRes = await fetch("https://api.dexscreener.com/latest/dex/tokens/" + mintList.join(","));
+        if (dexRes.ok) {
+          const dexData = await dexRes.json();
+          if (dexData && dexData.pairs) {
+            const added = new Set<string>();
+            for (const pair of dexData.pairs) {
+              if (pair.chainId === "solana" && pair.baseToken) {
+                const mint = pair.baseToken.address;
+                if (!added.has(mint) && mintList.includes(mint)) {
+                  added.add(mint);
+                  const name = pair.baseToken.symbol || "MEME";
+                  const symbol = name.length > 8 ? name.substring(0, 8) : name;
+                  discovered.push({
+                    symbol: "🕵️_" + symbol,
+                    mint: mint
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // En zenginleştirme başarısız olsa da devam et
+      }
+
+      for (const mint of mintList) {
+        if (!discovered.some((t) => t.mint === mint)) {
+          discovered.push({
+            symbol: "🕵️_" + mint.substring(0, 4),
+            mint: mint
+          });
+        }
+      }
+    }
+
+    if (discovered.length > 0) {
+      cachedSpyTokens = discovered;
+      lastSpyFetchTime = now;
+      console.log("✅ [Cüzdan Casusu] Başarıyla " + cachedSpyTokens.length + " adet balina cüzdanı tokeni keşfedildi.");
+    }
+  } catch (error: any) {
+    console.warn("⚠️ [Cüzdan Casusu] Takipte hata (cache kullanılacak):", error.message);
+  }
+  return cachedSpyTokens;
 }
 
 function updateScanTargets(discoveredMemeTokens: { symbol: string; mint: string }[] = []) {
@@ -430,12 +537,19 @@ async function sendTransactionToJito(signedTx: VersionedTransaction) {
  * Ana Arbitraj Tarama Fonksiyonu
  */
 async function checkArbitrage() {
+  let discovered: { symbol: string; mint: string }[] = [];
+  
   if (CONFIG.AUTO_DISCOVER_MEME) {
-    const discovered = await fetchTrendingMemeTokens();
-    updateScanTargets(discovered);
-  } else {
-    updateScanTargets([]);
+    const trending = await fetchTrendingMemeTokens();
+    discovered = [...discovered, ...trending];
   }
+  
+  if (CONFIG.AUTO_SPY_WALLET && CONFIG.SPY_WALLET_ADDRESS) {
+    const spyTokens = await discoverSpyWalletTokens();
+    discovered = [...discovered, ...spyTokens];
+  }
+  
+  updateScanTargets(discovered);
   
   console.log("\\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
   

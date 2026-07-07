@@ -4,6 +4,7 @@ import fs from "fs";
 import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 import dns from "dns";
+import { Connection, PublicKey } from "@solana/web3.js";
 
 // Node's IPv6 DNS bug fix for some containers
 if (dns && typeof dns.setDefaultResultOrder === "function") {
@@ -95,6 +96,117 @@ async function startServer() {
     } catch (error: any) {
       console.error("config.json yüklenirken hata oluştu:", error);
       res.status(500).json({ error: error.message || "Dosya okuma hatası." });
+    }
+  });
+
+  app.get("/api/spy-wallet", async (req, res) => {
+    try {
+      const { walletAddress, rpcUrl } = req.query;
+      if (!walletAddress) {
+        return res.status(400).json({ error: "walletAddress parametresi gerekli." });
+      }
+
+      const connectionUrl = (rpcUrl as string) || "https://api.mainnet-beta.solana.com";
+      const connection = new Connection(connectionUrl, "confirmed");
+      let pubKey: PublicKey;
+      
+      try {
+        pubKey = new PublicKey(walletAddress as string);
+      } catch (err) {
+        return res.status(400).json({ error: "Geçersiz Solana cüzdan adresi formatı." });
+      }
+
+      // Get recent transaction signatures
+      console.log(`[Cüzdan Casusu] ${pubKey.toBase58()} cüzdanı için son işlemler çekiliyor...`);
+      const signatures = await connection.getSignaturesForAddress(pubKey, { limit: 12 });
+      if (signatures.length === 0) {
+        return res.json({ success: true, tokens: [] });
+      }
+
+      const txSignatures = signatures.map((s) => s.signature);
+      
+      // Fetch detailed parsed transactions
+      const parsedTxes = await connection.getParsedTransactions(txSignatures, {
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed"
+      });
+
+      const uniqueMints = new Set<string>();
+
+      for (const tx of parsedTxes) {
+        if (!tx || !tx.meta) continue;
+
+        // Extract from token balances
+        const preBalances = tx.meta.preTokenBalances || [];
+        const postBalances = tx.meta.postTokenBalances || [];
+
+        for (const balance of [...preBalances, ...postBalances]) {
+          if (balance && balance.mint) {
+            const mint = balance.mint;
+            // Ignore SOL and standard stablecoins
+            if (
+              mint !== "So11111111111111111111111111111111111111112" && // SOL
+              mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" && // USDC
+              mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"    // USDT
+            ) {
+              uniqueMints.add(mint);
+            }
+          }
+        }
+      }
+
+      // Now, query DexScreener to get symbols and names of these mints in bulk
+      const mintList = Array.from(uniqueMints).slice(0, 30); // limit to top 30
+      const discoveredTokens: { symbol: string; mint: string; name: string; price?: string }[] = [];
+
+      if (mintList.length > 0) {
+        try {
+          const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintList.join(",")}`);
+          if (dexRes.ok) {
+            const dexData = await dexRes.json();
+            if (dexData && dexData.pairs) {
+              const addedMints = new Set<string>();
+              for (const pair of dexData.pairs) {
+                if (pair.chainId === "solana" && pair.baseToken) {
+                  const mint = pair.baseToken.address;
+                  if (!addedMints.has(mint) && mintList.includes(mint)) {
+                    addedMints.add(mint);
+                    discoveredTokens.push({
+                      symbol: pair.baseToken.symbol || "UNKNOWN",
+                      name: pair.baseToken.name || "Unknown Token",
+                      mint: mint,
+                      price: pair.priceUsd ? `$${parseFloat(pair.priceUsd).toLocaleString()}` : undefined
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Cüzdan Casusu] DexScreener API zenginleştirme hatası:", e);
+        }
+        
+        // For any mints that DexScreener didn't return, add them with default UNKNOWN symbol
+        for (const mint of mintList) {
+          const alreadyAdded = discoveredTokens.some((t) => t.mint === mint);
+          if (!alreadyAdded) {
+            discoveredTokens.push({
+              symbol: "SPY",
+              name: "Discovered Token",
+              mint: mint
+            });
+          }
+        }
+      }
+
+      console.log(`[Cüzdan Casusu] İşlem tamamlandı. ${discoveredTokens.length} adet benzersiz aktif token keşfedildi.`);
+      res.json({
+        success: true,
+        tokens: discoveredTokens
+      });
+    } catch (error: any) {
+      console.error("[Cüzdan Casusu] Hata oluştu:", error);
+      res.status(500).json({ error: error.message || "Casus cüzdan verileri çekilemedi." });
     }
   });
 

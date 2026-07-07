@@ -96,6 +96,14 @@ export default function App() {
     const saved = localStorage.getItem('solarb_auto_discover_meme');
     return saved !== null ? saved === 'true' : true;
   });
+  const [spyWalletAddress, setSpyWalletAddress] = useState<string>(() => localStorage.getItem('solarb_spy_wallet_address') || 'B7b6UM14WdVPoF2ZohMNSPWqFdS7QrxbkSAt6Z4sEwxL');
+  const [autoSpyWallet, setAutoSpyWallet] = useState<boolean>(() => {
+    const saved = localStorage.getItem('solarb_auto_spy_wallet');
+    return saved !== null ? saved === 'true' : false;
+  });
+  const [isSpyScanning, setIsSpyScanning] = useState<boolean>(false);
+  const [spyDiscoveredTokens, setSpyDiscoveredTokens] = useState<{ symbol: string; name: string; mint: string; price?: string }[]>([]);
+  const [spyError, setSpyError] = useState<string>('');
 
   // Save configurations to localStorage automatically
   useEffect(() => {
@@ -111,7 +119,9 @@ export default function App() {
     localStorage.setItem('solarb_jupiter_api_url', jupiterApiUrl);
     localStorage.setItem('solarb_custom_mints', customMints);
     localStorage.setItem('solarb_auto_discover_meme', String(autoDiscoverMeme));
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme]);
+    localStorage.setItem('solarb_spy_wallet_address', spyWalletAddress);
+    localStorage.setItem('solarb_auto_spy_wallet', String(autoSpyWallet));
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet]);
 
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
@@ -172,6 +182,64 @@ export default function App() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  const handleScanSpyWallet = async () => {
+    if (!spyWalletAddress) {
+      setSpyError('Lütfen bir cüzdan adresi girin.');
+      return;
+    }
+    setIsSpyScanning(true);
+    setSpyError('');
+    try {
+      const response = await fetch(`/api/spy-wallet?walletAddress=${encodeURIComponent(spyWalletAddress)}&rpcUrl=${encodeURIComponent(rpcUrl)}`);
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSpyDiscoveredTokens(data.tokens || []);
+        if (!data.tokens || data.tokens.length === 0) {
+          setSpyError('Bu cüzdanın son işlemlerinde aktif bir özel token bulunamadı.');
+        } else {
+          addLog(`🕵️ Cüzdan Casusu: ${spyWalletAddress} cüzdanından ${data.tokens.length} adet aktif parite bulundu!`, 'info');
+        }
+      } else {
+        setSpyError(data.error || 'Token listesi çekilemedi.');
+      }
+    } catch (err: any) {
+      setSpyError(err.message || 'Cüzdan taranırken sunucuyla bağlantı kurulamadı.');
+    } finally {
+      setIsSpyScanning(false);
+    }
+  };
+
+  const handleAddSpyTokenToCustom = (mint: string, symbol: string) => {
+    let currentMints = customMints ? customMints.split(',').map(m => m.trim()) : [];
+    if (currentMints.includes(mint)) {
+      addLog(`ℹ️ ${symbol} token zaten tarama listenizde ekli.`, 'info');
+      return;
+    }
+    currentMints.push(mint);
+    const newMints = currentMints.filter(m => m.length > 0).join(', ');
+    setCustomMints(newMints);
+    addLog(`✅ ${symbol} token başarıyla özel tarama listenize eklendi.`, 'success');
+  };
+
+  const handleAddAllSpyTokensToCustom = () => {
+    if (spyDiscoveredTokens.length === 0) return;
+    let currentMints = customMints ? customMints.split(',').map(m => m.trim()) : [];
+    let addedCount = 0;
+    spyDiscoveredTokens.forEach(t => {
+      if (!currentMints.includes(t.mint)) {
+        currentMints.push(t.mint);
+        addedCount++;
+      }
+    });
+    if (addedCount > 0) {
+      const newMints = currentMints.filter(m => m.length > 0).join(', ');
+      setCustomMints(newMints);
+      addLog(`🎉 Başarıyla ${addedCount} adet yeni balina tokeni tarama listenize eklendi!`, 'success');
+    } else {
+      addLog('ℹ️ Bulunan tüm tokenler zaten listenizde ekli durumda.', 'info');
+    }
+  };
 
   const handleStartRealBot = async () => {
     setIsStartingBot(true);
@@ -248,6 +316,8 @@ export default function App() {
           if (cfg.jupiterApiUrl) setJupiterApiUrl(cfg.jupiterApiUrl);
           if (cfg.customMints) setCustomMints(cfg.customMints);
           if (cfg.autoDiscoverMeme !== undefined) setAutoDiscoverMeme(cfg.autoDiscoverMeme === true || cfg.autoDiscoverMeme === 'true');
+          if (cfg.spyWalletAddress) setSpyWalletAddress(cfg.spyWalletAddress);
+          if (cfg.autoSpyWallet !== undefined) setAutoSpyWallet(cfg.autoSpyWallet === true || cfg.autoSpyWallet === 'true');
         }
       } catch (err) {
         console.error("Sunucudan konfigürasyon yüklenirken hata:", err);
@@ -387,9 +457,11 @@ export default function App() {
       privateKey,
       jupiterApiUrl,
       customMints,
-      autoDiscoverMeme
+      autoDiscoverMeme,
+      spyWalletAddress,
+      autoSpyWallet
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -438,7 +510,9 @@ export default function App() {
             panelPassword,
             jupiterApiUrl,
             customMints,
-            autoDiscoverMeme
+            autoDiscoverMeme,
+            spyWalletAddress,
+            autoSpyWallet
           })
         });
 
@@ -1006,6 +1080,115 @@ export default function App() {
                 <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
                   💡 Fırsat yakalayacağınız özel pump.fun veya SPL coinlerin mint adreslerini aralarına virgül koyarak ekleyin. Bot hem standart paritelerde hem de eklediğiniz bu meme coinlerde eşzamanlı dairesel fırsat tarar.
                 </p>
+              </div>
+
+              {/* Wallet Spy / Insider Tracking Section */}
+              <div className="bg-[#0D0E12] border border-[#222226] p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-[#222226] pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-amber-500/10 text-amber-400">
+                      <Wallet size={14} className="animate-pulse" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-zinc-100 tracking-wide uppercase">🕵️ Cüzdan Casusu & Balina Takibi</span>
+                      <span className="text-[10px] text-zinc-500 font-sans">Arbitraj ve MEV Cüzdanlarının Sırlarını Çözün</span>
+                    </div>
+                  </div>
+                  
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoSpyWallet}
+                      onChange={(e) => setAutoSpyWallet(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500 peer-checked:after:bg-black"></div>
+                  </label>
+                </div>
+
+                <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">
+                  Başarılı on-chain arbitrajcılar, karlı meme paritelerini herkesten önce bulur. Takip etmek istediğiniz cüzdan adresini yazıp sorgulayarak, son takaslarında etkileşime girdiği gizli fırsat tokenlerini anında keşfedin ve tarama listenize ekleyin!
+                </p>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={spyWalletAddress}
+                    onChange={(e) => setSpyWalletAddress(e.target.value.trim())}
+                    placeholder="Solana Cüzdan Adresi (örn: B7b6UM...)"
+                    className="flex-1 bg-[#050507] border border-[#222226] px-3 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-amber-500 placeholder-zinc-700"
+                  />
+                  <button
+                    onClick={handleScanSpyWallet}
+                    disabled={isSpyScanning}
+                    className="px-3 bg-amber-600 hover:bg-amber-500 text-black text-xs font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSpyScanning ? (
+                      <RefreshCw size={12} className="animate-spin" />
+                    ) : (
+                      <Zap size={12} />
+                    )}
+                    {isSpyScanning ? 'Taranıyor...' : 'Analiz Et'}
+                  </button>
+                </div>
+
+                {/* Auto Spy Info Box */}
+                {autoSpyWallet && (
+                  <div className="bg-amber-500/5 border border-amber-500/15 p-2 flex items-start gap-1.5">
+                    <Info size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-[9px] text-amber-400/80 leading-normal font-sans">
+                      <strong>Otomatik Casus Aktif:</strong> Bot her tarama döngüsünde bu cüzdanın son işlem yaptığı özel tokenleri blockchain'den otomatik olarak çekip dairesel tarama listesine dahil edecektir!
+                    </p>
+                  </div>
+                )}
+
+                {/* Errors inside the spy wallet box */}
+                {spyError && (
+                  <div className="text-[10px] text-red-400 bg-red-950/20 border border-red-900/40 p-2 font-mono">
+                    ⚠️ {spyError}
+                  </div>
+                )}
+
+                {/* Discovered Tokens list */}
+                {spyDiscoveredTokens.length > 0 && (
+                  <div className="space-y-2 mt-2 border-t border-[#222226] pt-2">
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-zinc-400 font-semibold uppercase tracking-wider">Tespit Edilen Tokenler ({spyDiscoveredTokens.length})</span>
+                      <button
+                        onClick={handleAddAllSpyTokensToCustom}
+                        className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        ⚡ Hepsini Ekle
+                      </button>
+                    </div>
+
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 text-xs scrollbar-thin">
+                      {spyDiscoveredTokens.map((token, i) => (
+                        <div key={i} className="flex items-center justify-between bg-[#050507] p-2 border border-[#1A1A1E] hover:border-zinc-800 transition-colors">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-amber-400 shrink-0 bg-amber-500/10 px-1 py-0.5 text-[9px] font-mono">🕵️ {token.symbol}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-[10px] text-zinc-300 truncate font-semibold">{token.name}</span>
+                              <span className="text-[9px] text-zinc-500 truncate font-mono">{token.mint.substring(0, 6)}...{token.mint.substring(token.mint.length - 6)}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {token.price && (
+                              <span className="text-[10px] font-mono text-zinc-400">{token.price}</span>
+                            )}
+                            <button
+                              onClick={() => handleAddSpyTokenToCustom(token.mint, token.symbol)}
+                              className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[9px] transition-all font-semibold rounded cursor-pointer"
+                            >
+                              + Ekle
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Amount input */}

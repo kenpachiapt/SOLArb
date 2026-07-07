@@ -9,7 +9,6 @@
  */
 
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
-import fetch from "node-fetch";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
 import * as dns from "dns";
