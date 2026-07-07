@@ -243,36 +243,93 @@ async function discoverSpyWalletTokens() {
   }
 
   try {
-    console.log("🕵️ [Cüzdan Casusu] " + CONFIG.SPY_WALLET_ADDRESS + " cüzdanının son işlemleri taranıyor...");
+    console.log("🕵️ [Cüzdan Casusu] " + CONFIG.SPY_WALLET_ADDRESS + " cüzdanı için yedekli tarama başlatılıyor...");
     const pubKey = new PublicKey(CONFIG.SPY_WALLET_ADDRESS);
-    const signatures = await connection.getSignaturesForAddress(pubKey, { limit: 12 });
-    if (signatures.length === 0) {
-      return [];
-    }
-
-    const txSignatures = signatures.map((s) => s.signature);
-    const parsedTxes = await connection.getParsedTransactions(txSignatures, {
-      maxSupportedTransactionVersion: 0,
-      commitment: "confirmed"
-    });
-
     const uniqueMints = new Set<string>();
-    for (const tx of parsedTxes) {
-      if (!tx || !tx.meta) continue;
-      const preBalances = tx.meta.preTokenBalances || [];
-      const postBalances = tx.meta.postTokenBalances || [];
-      for (const balance of [...preBalances, ...postBalances]) {
-        if (balance && balance.mint) {
-          const mint = balance.mint;
-          if (
-            mint !== "So11111111111111111111111111111111111111112" &&
-            mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
-            mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
-          ) {
-            uniqueMints.add(mint);
-          }
+
+    const rpcUrls = [
+      CONFIG.RPC_URL,
+      "https://api.ankr.com/solana",
+      "https://rpc.ankr.com/solana",
+      "https://solana.public-rpc.com",
+      "https://solana-mainnet.g.allthatnode.com",
+      "https://api.mainnet-beta.solana.com"
+    ].filter(url => url && url.startsWith("http"));
+
+    const uniqueRpcUrls = Array.from(new Set(rpcUrls));
+
+    const runWithRpcFallback = async (fn: (conn: Connection) => Promise<void>) => {
+      let lastError: any = null;
+      for (const url of uniqueRpcUrls) {
+        try {
+          const conn = new Connection(url, "confirmed");
+          await fn(conn);
+          return; // Başarılı ise döngüden çık
+        } catch (err: any) {
+          lastError = err;
         }
       }
+      throw lastError || new Error("Tüm Solana RPC sunucuları başarısız oldu.");
+    };
+
+    // 1. Cüzdan Token Hesaplarını Çek (Hızlı ve Güvenilir)
+    try {
+      await runWithRpcFallback(async (conn) => {
+        const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        const tokenAccounts = await conn.getParsedTokenAccountsByOwner(pubKey, {
+          programId: TOKEN_PROGRAM_ID
+        });
+        if (tokenAccounts && tokenAccounts.value) {
+          for (const acc of tokenAccounts.value) {
+            const info = acc.account.data.parsed?.info;
+            if (info && info.mint) {
+              const mint = info.mint;
+              if (
+                mint !== "So11111111111111111111111111111111111111112" &&
+                mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
+                mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+              ) {
+                uniqueMints.add(mint);
+              }
+            }
+          }
+        }
+      });
+    } catch (err: any) {
+      console.warn("⚠️ [Cüzdan Casusu] Token hesapları alınamadı:", err.message || err);
+    }
+
+    // 2. Son İşlemleri Çek (Geçmiş İşlemler)
+    try {
+      await runWithRpcFallback(async (conn) => {
+        const signatures = await conn.getSignaturesForAddress(pubKey, { limit: 12 });
+        if (signatures && signatures.length > 0) {
+          const txSignatures = signatures.map((s) => s.signature);
+          const parsedTxes = await conn.getParsedTransactions(txSignatures, {
+            maxSupportedTransactionVersion: 0,
+            commitment: "confirmed"
+          });
+          for (const tx of parsedTxes) {
+            if (!tx || !tx.meta) continue;
+            const preBalances = tx.meta.preTokenBalances || [];
+            const postBalances = tx.meta.postTokenBalances || [];
+            for (const balance of [...preBalances, ...postBalances]) {
+              if (balance && balance.mint) {
+                const mint = balance.mint;
+                if (
+                  mint !== "So11111111111111111111111111111111111111112" &&
+                  mint !== "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" &&
+                  mint !== "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+                ) {
+                  uniqueMints.add(mint);
+                }
+              }
+            }
+          }
+        }
+      });
+    } catch (err: any) {
+      console.warn("⚠️ [Cüzdan Casusu] Son işlemler alınamadı:", err.message || err);
     }
 
     const mintList = Array.from(uniqueMints).slice(0, 15);
@@ -302,7 +359,7 @@ async function discoverSpyWalletTokens() {
           }
         }
       } catch (e) {
-        // En zenginleştirme başarısız olsa da devam et
+        // DexScreener zenginleştirme başarısız olsa da devam et
       }
 
       for (const mint of mintList) {
@@ -318,10 +375,10 @@ async function discoverSpyWalletTokens() {
     if (discovered.length > 0) {
       cachedSpyTokens = discovered;
       lastSpyFetchTime = now;
-      console.log("✅ [Cüzdan Casusu] Başarıyla " + cachedSpyTokens.length + " adet balina cüzdanı tokeni keşfedildi.");
+      console.log("✅ [Cüzdan Casusu] Başarıyla " + cachedSpyTokens.length + " adet aktif balina cüzdanı tokeni keşfedildi ve dairesel taramaya beslendi.");
     }
   } catch (error: any) {
-    console.warn("⚠️ [Cüzdan Casusu] Takipte hata (cache kullanılacak):", error.message);
+    console.warn("⚠️ [Cüzdan Casusu] Genel takip hatası (eski veriler kullanılacak):", error.message);
   }
   return cachedSpyTokens;
 }
