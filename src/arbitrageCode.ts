@@ -75,7 +75,7 @@ export function generateArbitrageCode(options: BotOptions): string {
  * anında kârı cüzdanınıza ekler.
  */
 
-import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
+import { Connection, Keypair, VersionedTransaction, PublicKey } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
 import * as dns from "dns";
