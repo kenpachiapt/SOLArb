@@ -563,17 +563,16 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
 }
 
 /**
- * İşlemi Jito MEV Blok Motoruna bundle olarak gönderir
+ * İşlemleri Jito MEV Blok Motoruna tek bir atomik bundle (paket) olarak gönderir
  */
-async function sendTransactionToJito(signedTx: VersionedTransaction) {
-  const rawTx = signedTx.serialize();
-  const base64Tx = Buffer.from(rawTx).toString("base64");
+async function sendBundleToJito(txs: VersionedTransaction[]) {
+  const base64Txs = txs.map(tx => Buffer.from(tx.serialize()).toString("base64"));
   
   const payload = {
     jsonrpc: "2.0",
     id: 1,
     method: "sendBundle",
-    params: [[base64Tx]]
+    params: [base64Txs]
   };
 
   try {
@@ -585,7 +584,7 @@ async function sendTransactionToJito(signedTx: VersionedTransaction) {
     const result = await response.json();
     return result;
   } catch (error) {
-    console.error("⚠️ Jito'ya gönderim yapılırken hata oluştu:", error.message);
+    console.error("⚠️ Jito'ya bundle gönderilirken hata oluştu:", error.message);
     return null;
   }
 }
@@ -671,10 +670,9 @@ async function checkArbitrage() {
         console.log("   [3/4] İşlemler imzalandı. Yayınlanıyor...");
 
         if (CONFIG.USE_JITO) {
-          console.log("   [JITO] Jito MEV Blok Motoru ile gönderiliyor...");
-          const res1 = await sendTransactionToJito(tx1);
-          const res2 = await sendTransactionToJito(tx2);
-          console.log("   ✅ JITO Gönderimi yapıldı. Sonuç:", JSON.stringify({ res1, res2 }));
+          console.log("   [JITO] Jito MEV Blok Motoru ile atomik bundle gönderiliyor...");
+          const res = await sendBundleToJito([tx1, tx2]);
+          console.log("   ✅ JITO Atomik Bundle Gönderimi yapıldı. Sonuç:", JSON.stringify(res));
           await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
         } else {
           const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
