@@ -63,6 +63,11 @@ interface ArbitrageTx {
 
 export default function App() {
   // Config States
+  const [maxTokens, setMaxTokens] = useState<number>(() => Number(localStorage.getItem('solarb_maxTokens') ?? 500));
+  const [scanBatchSize, setScanBatchSize] = useState<number>(() => Number(localStorage.getItem('solarb_scanBatchSize') ?? 25));
+  const [minLiquidityUsd, setMinLiquidityUsd] = useState<number>(() => Number(localStorage.getItem('solarb_minLiquidityUsd') ?? 50000));
+  const [minVolume24hUsd, setMinVolume24hUsd] = useState<number>(() => Number(localStorage.getItem('solarb_minVolume24hUsd') ?? 10000));
+  const [dryRun, setDryRun] = useState(() => localStorage.getItem('solarb_dryRun') !== 'false');
   const [rpcUrl, setRpcUrl] = useState<string>(() => localStorage.getItem('solarb_rpc_url') || 'https://api.mainnet-beta.solana.com');
   const [startToken, setStartToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK'>(() => (localStorage.getItem('solarb_start_token') as any) || 'SOL');
   const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF' | 'ALL'>(() => (localStorage.getItem('solarb_inter_token') as any) || 'USDC');
@@ -107,6 +112,11 @@ export default function App() {
 
   // Save configurations to localStorage automatically
   useEffect(() => {
+    localStorage.setItem('solarb_maxTokens', String(maxTokens));
+    localStorage.setItem('solarb_scanBatchSize', String(scanBatchSize));
+    localStorage.setItem('solarb_minLiquidityUsd', String(minLiquidityUsd));
+    localStorage.setItem('solarb_minVolume24hUsd', String(minVolume24hUsd));
+    localStorage.setItem('solarb_dryRun', String(dryRun));
     localStorage.setItem('solarb_rpc_url', rpcUrl);
     localStorage.setItem('solarb_start_token', startToken);
     localStorage.setItem('solarb_inter_token', interToken);
@@ -121,7 +131,7 @@ export default function App() {
     localStorage.setItem('solarb_auto_discover_meme', String(autoDiscoverMeme));
     localStorage.setItem('solarb_spy_wallet_address', spyWalletAddress);
     localStorage.setItem('solarb_auto_spy_wallet', String(autoSpyWallet));
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun]);
 
   // Telegram Notifications States
   const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
@@ -316,6 +326,11 @@ export default function App() {
           if (cfg.panelPassword) setPanelPassword(cfg.panelPassword);
           if (cfg.jupiterApiUrl) setJupiterApiUrl(cfg.jupiterApiUrl);
           if (cfg.customMints) setCustomMints(cfg.customMints);
+          if (cfg.maxTokens !== undefined) setMaxTokens(Number(cfg.maxTokens));
+          if (cfg.scanBatchSize !== undefined) setScanBatchSize(Number(cfg.scanBatchSize));
+          if (cfg.minLiquidityUsd !== undefined) setMinLiquidityUsd(Number(cfg.minLiquidityUsd));
+          if (cfg.minVolume24hUsd !== undefined) setMinVolume24hUsd(Number(cfg.minVolume24hUsd));
+          if (cfg.dryRun !== undefined) setDryRun(cfg.dryRun !== false && cfg.dryRun !== 'false');
           if (cfg.autoDiscoverMeme !== undefined) setAutoDiscoverMeme(cfg.autoDiscoverMeme === true || cfg.autoDiscoverMeme === 'true');
           if (cfg.spyWalletAddress) setSpyWalletAddress(cfg.spyWalletAddress);
           if (cfg.autoSpyWallet !== undefined) setAutoSpyWallet(cfg.autoSpyWallet === true || cfg.autoSpyWallet === 'true');
@@ -459,10 +474,11 @@ export default function App() {
       jupiterApiUrl,
       customMints,
       autoDiscoverMeme,
+      maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun,
       spyWalletAddress,
       autoSpyWallet
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -512,6 +528,7 @@ export default function App() {
             jupiterApiUrl,
             customMints,
             autoDiscoverMeme,
+      maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun,
             spyWalletAddress,
             autoSpyWallet
           })
@@ -1047,8 +1064,8 @@ export default function App() {
               <div className="bg-[#0B0B0D] border border-[#222226] p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-zinc-200">🤖 Otomatik Meme Coin Keşfi</span>
-                    <span className="text-[10px] text-zinc-500">DexScreener ile Trend Meme Pariteleri</span>
+                    <span className="text-xs font-semibold text-zinc-200">🤖 Geniş Token Keşfi</span>
+                    <span className="text-[10px] text-zinc-500">Jupiter token listesi + DexScreener</span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
@@ -1061,10 +1078,24 @@ export default function App() {
                   </label>
                 </div>
                 <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
-                  Açık olduğunda, Solana üzerinde DexScreener'da trend olan, yüksek hacimli ve en aktif meme coinler otomatik olarak taranır. Manuel mint adresi girmek zorunda kalmazsınız!
+                  Likidite ve hacim filtrelerini geçen tokenlar sırayla taranır. Geniş liste için sunucudaki .env dosyasına JUPITER_API_KEY ekleyin. Gerçek takip sayısı API sonuçlarına ve filtrelere bağlıdır.
                 </p>
               </div>
 
+<div className="grid grid-cols-2 gap-3"><label className="text-[11px] text-zinc-400">Maksimum takip edilen token
+ <input type="number" min={1} max={5000} value={maxTokens} onChange={e => setMaxTokens(Math.min(5000, Math.max(1, Number(e.target.value))))} className="w-full bg-[#0B0B0D] border border-[#222226] px-3 py-2 text-zinc-200" />
+ </label>
+<label className="text-[11px] text-zinc-400">Tur başına token
+ <input type="number" min={1} max={500} value={scanBatchSize} onChange={e => setScanBatchSize(Math.min(500, Math.max(1, Number(e.target.value))))} className="w-full bg-[#0B0B0D] border border-[#222226] px-3 py-2 text-zinc-200" />
+ </label>
+<label className="text-[11px] text-zinc-400">Minimum likidite (USD)
+ <input type="number" min={0} max={1000000000000} value={minLiquidityUsd} onChange={e => setMinLiquidityUsd(Math.min(1000000000000, Math.max(0, Number(e.target.value))))} className="w-full bg-[#0B0B0D] border border-[#222226] px-3 py-2 text-zinc-200" />
+ </label>
+<label className="text-[11px] text-zinc-400">Minimum 24 saat hacim (USD)
+ <input type="number" min={0} max={1000000000000} value={minVolume24hUsd} onChange={e => setMinVolume24hUsd(Math.min(1000000000000, Math.max(0, Number(e.target.value))))} className="w-full bg-[#0B0B0D] border border-[#222226] px-3 py-2 text-zinc-200" />
+ </label></div>
+ <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} />Sadece tara — işlem gönderme</label>
+ <p className="text-[10px] text-zinc-500">500 token için en az 1.000 teklif gerekir. API hızınıza göre tam tur dakikalar sürebilir. Sonuçlar arka plan botunun loglarında görünür; panel simülasyonu gerçek fırsat değildir.</p>
               {/* Custom Token Mints (Pump.fun / SPL) */}
               <div className="space-y-2">
                 <label className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold flex items-center justify-between">
@@ -2382,7 +2413,7 @@ export default function App() {
                         type="text"
                         value={jupiterApiUrl}
                         onChange={(e) => setJupiterApiUrl(e.target.value)}
-                        placeholder="Yedekli listeye eklemek veya değiştirmek için girin (örn. https://quote-api.jup.ag/v6)"
+                        placeholder="Yedekli listeye eklemek veya değiştirmek için girin (örn. https://api.jup.ag/swap/v1)"
                         className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
                     </div>
@@ -2479,3 +2510,4 @@ export default function App() {
     </div>
   );
 }
+

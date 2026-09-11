@@ -1,3 +1,4 @@
+import { scannerRuntime } from './scannerRuntime.ts';
 export interface BotOptions {
   rpcUrl: string;
   startToken: string;
@@ -14,6 +15,11 @@ export interface BotOptions {
   jupiterApiUrl?: string;
   customMints?: string;
   autoDiscoverMeme?: boolean;
+  maxTokens?: number;
+  scanBatchSize?: number;
+  minLiquidityUsd?: number;
+  minVolume24hUsd?: number;
+  dryRun?: boolean;
   spyWalletAddress?: string;
   autoSpyWallet?: boolean;
 }
@@ -22,9 +28,9 @@ export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-  BONK: 'DezXAZ8z7PnrnRJjz3wX4mTy3eUVVB8G3R6U47Hrkigw',
-  JUP: 'JUPyiwrYJF1m4F9C6SrxadSZm8V7uhcFM637vMhXCm7',
-  WIF: 'EKpQGSJtjMFqKZ98GWST69vThTZEgTUMmKW66m8zg1yO'
+  BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+  JUP: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+  WIF: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm'
 };
 
 export const TOKEN_DECIMALS = {
@@ -72,7 +78,7 @@ export function generateArbitrageCode(options: BotOptions): string {
  * Bu bot, Solana Mainnet üzerinde dairesel arbitraj fırsatlarını arar.
  * "Tüm Pariteler" modu seçildiğinde, cüzdanınızdaki başlangıç varlığını koruyarak
  * JUP, BONK, WIF, USDC, USDT ve eklediğiniz pump.fun tokenlerinde fırsat kovalayıp
- * anında kârı cüzdanınıza ekler.
+ * gerçek teklifler üzerinden fırsat adaylarını tarar. Varsayılan mod işlem göndermez.
  */
 
 import { Connection, Keypair, VersionedTransaction, PublicKey } from "@solana/web3.js";
@@ -96,12 +102,12 @@ dotenv.config();
 
 // Yapılandırma Parametreleri
 const CONFIG = {
-  RPC_URL: "${rpcUrl || 'https://api.mainnet-beta.solana.com'}",
-  
+  RPC_URL: ${JSON.stringify(rpcUrl || 'https://api.mainnet-beta.solana.com')},
+
   START_TOKEN: "${startToken}",
   START_MINT: "${startMint}",
   START_DECIMALS: ${decimals},
-  
+
   INTER_TOKEN: "${interToken}",
   INTER_MINT: "${interMint}",
   INTER_DECIMALS: ${interDecimals},
@@ -111,25 +117,30 @@ const CONFIG = {
 
   SLIPPAGE_BPS: ${slippageBps},
   MIN_PROFIT_PCT: ${minProfitPct},
-  
+
   PRIORITY_FEE_SOL: ${priorityFeeSol},
   SCAN_INTERVAL: ${scanIntervalMs},
 
   USE_JITO: ${useJito},
   JITO_BLOCK_ENGINE_URL: process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
 
-  JUPITER_API_URL: "${jupiterApiUrl || ''}",
+  JUPITER_API_URL: ${JSON.stringify(jupiterApiUrl || '')},
 
-  TELEGRAM_TOKEN: "${telegramToken || ''}",
-  TELEGRAM_CHAT_ID: "${telegramChatId || ''}",
-  
-  CUSTOM_MINTS: "${customMints || ''}",
+  TELEGRAM_TOKEN: ${JSON.stringify(telegramToken || '')},
+  TELEGRAM_CHAT_ID: ${JSON.stringify(telegramChatId || '')},
+
+  CUSTOM_MINTS: ${JSON.stringify(customMints || '')},
+  MAX_TOKENS: ${options.maxTokens ?? 500},
+  SCAN_BATCH_SIZE: ${options.scanBatchSize ?? 25},
+  MIN_LIQUIDITY_USD: ${options.minLiquidityUsd ?? 50000},
+  MIN_VOLUME_24H_USD: ${options.minVolume24hUsd ?? 10000},
+  DRY_RUN: ${options.dryRun ?? true},
   AUTO_DISCOVER_MEME: ${autoDiscoverMeme === undefined ? true : autoDiscoverMeme},
-  SPY_WALLET_ADDRESS: "${spyWalletAddress || ''}",
+  SPY_WALLET_ADDRESS: ${JSON.stringify(spyWalletAddress || '')},
   AUTO_SPY_WALLET: ${autoSpyWallet === undefined ? false : autoSpyWallet}
 };
 
-let privateKeyString = "${privateKey || ''}";
+let privateKeyString = ${JSON.stringify(privateKey || '')};
 
 // Eğer yerel veya üst klasörde config.json varsa dinamik olarak yükle (panel ile tam senkronizasyon için)
 try {
@@ -143,6 +154,10 @@ try {
     if (fs.existsSync(p)) {
       const fileData = JSON.parse(fs.readFileSync(p, "utf8"));
       if (fileData) {
+        for (const [key, field] of Object.entries({ maxTokens: 'MAX_TOKENS', scanBatchSize: 'SCAN_BATCH_SIZE', minLiquidityUsd: 'MIN_LIQUIDITY_USD', minVolume24hUsd: 'MIN_VOLUME_24H_USD' })) {
+          if (fileData[key] !== undefined) (CONFIG as any)[field] = Number(fileData[key]);
+        }
+        if (fileData.dryRun !== undefined) CONFIG.DRY_RUN = fileData.dryRun !== false && fileData.dryRun !== 'false';
         if (fileData.rpcUrl) CONFIG.RPC_URL = fileData.rpcUrl;
         if (fileData.startToken) CONFIG.START_TOKEN = fileData.startToken;
         if (fileData.interToken) CONFIG.INTER_TOKEN = fileData.interToken;
@@ -163,7 +178,7 @@ try {
         if (fileData.autoDiscoverMeme !== undefined) CONFIG.AUTO_DISCOVER_MEME = fileData.autoDiscoverMeme === true || fileData.autoDiscoverMeme === "true";
         if (fileData.spyWalletAddress !== undefined) CONFIG.SPY_WALLET_ADDRESS = fileData.spyWalletAddress;
         if (fileData.autoSpyWallet !== undefined) CONFIG.AUTO_SPY_WALLET = fileData.autoSpyWallet === true || fileData.autoSpyWallet === "true";
-        
+
         console.log("📂 Konfigürasyon başarıyla config.json dosyasından yüklendi: " + p);
         break;
       }
@@ -184,51 +199,18 @@ if (process.env.SOLANA_AUTO_DISCOVER_MEME) CONFIG.AUTO_DISCOVER_MEME = process.e
 if (process.env.SOLANA_SPY_WALLET_ADDRESS) CONFIG.SPY_WALLET_ADDRESS = process.env.SOLANA_SPY_WALLET_ADDRESS;
 if (process.env.SOLANA_AUTO_SPY_WALLET) CONFIG.AUTO_SPY_WALLET = process.env.SOLANA_AUTO_SPY_WALLET === "true";
 
-// Tarama yapılacak pariteleri belirleyen liste
-const scanTargets: { symbol: string; mint: string }[] = [];
+const knownTokens: Record<string, { mint: string; decimals: number }> = ${JSON.stringify(Object.fromEntries(Object.entries(TOKEN_MINTS).map(([symbol, mint]) => [symbol, { mint, decimals: TOKEN_DECIMALS[symbol] }])))};
+if (!knownTokens[CONFIG.START_TOKEN] || (CONFIG.INTER_TOKEN !== 'ALL' && !knownTokens[CONFIG.INTER_TOKEN])) throw new Error('Bilinmeyen başlangıç/ara token');
+CONFIG.START_MINT = knownTokens[CONFIG.START_TOKEN].mint;
+CONFIG.START_DECIMALS = knownTokens[CONFIG.START_TOKEN].decimals;
+if (CONFIG.INTER_TOKEN !== 'ALL') CONFIG.INTER_MINT = knownTokens[CONFIG.INTER_TOKEN].mint;
+CONFIG.TRADE_AMOUNT_RAW = Math.round(CONFIG.TRADE_AMOUNT * 10 ** CONFIG.START_DECIMALS);
+if (!Number.isSafeInteger(CONFIG.TRADE_AMOUNT_RAW) || CONFIG.TRADE_AMOUNT_RAW <= 0) throw new Error('İşlem miktarı pozitif ve güvenli tamsayı olmalıdır');
+if (!Number.isFinite(CONFIG.MIN_PROFIT_PCT) || CONFIG.MIN_PROFIT_PCT < 0 || !Number.isFinite(CONFIG.SLIPPAGE_BPS) || CONFIG.SLIPPAGE_BPS < 0 || CONFIG.SLIPPAGE_BPS > 10000) throw new Error('Geçersiz kâr/slipaj ayarı');
+if (!Number.isFinite(CONFIG.PRIORITY_FEE_SOL) || CONFIG.PRIORITY_FEE_SOL < 0) throw new Error('Geçersiz ücret');
+if (!Number.isFinite(CONFIG.SCAN_INTERVAL) || CONFIG.SCAN_INTERVAL < 100) throw new Error('Geçersiz tarama aralığı');
+${scannerRuntime}
 
-// DexScreener trend meme coinleri için önbellek ve fonksiyon
-let lastDexScreenerFetchTime = 0;
-let cachedMemeTokens: { symbol: string; mint: string }[] = [];
-
-async function fetchTrendingMemeTokens() {
-  const now = Date.now();
-  if (now - lastDexScreenerFetchTime < 300000 && cachedMemeTokens.length > 0) {
-    return cachedMemeTokens;
-  }
-  try {
-    console.log("🔍 [DexScreener] Solana trend meme coinleri otomatik keşfediliyor...");
-    const response = await fetch("https://api.dexscreener.com/token-profiles/latest/v1");
-    if (!response.ok) {
-      throw new Error("HTTP hata kodu: " + response.status);
-    }
-    const data = await response.json();
-    if (Array.isArray(data)) {
-      const solanaTokens = data
-        .filter((item: any) => item.chainId === "solana" && item.tokenAddress)
-        .map((item: any) => {
-          const mint = item.tokenAddress;
-          const name = item.symbol || "MEME";
-          const symbol = name.length > 8 ? name.substring(0, 8) : name;
-          return {
-            symbol: "🔥_" + symbol,
-            mint: mint
-          };
-        });
-      
-      if (solanaTokens.length > 0) {
-        cachedMemeTokens = solanaTokens.slice(0, 45);
-        lastDexScreenerFetchTime = now;
-        console.log("✅ [DexScreener] Başarıyla " + cachedMemeTokens.length + " adet trend meme token keşfedildi.");
-      }
-    }
-  } catch (error: any) {
-    console.warn("⚠️ [DexScreener] Trend meme coin keşfinde geçici hata (cache kullanılacak):", error.message);
-  }
-  return cachedMemeTokens;
-}
-
-// Cüzdan Casusu ile balina cüzdanının aktif işlem yaptığı tokenleri keşfetme
 let lastSpyFetchTime = 0;
 let cachedSpyTokens: { symbol: string; mint: string }[] = [];
 
@@ -237,7 +219,7 @@ async function discoverSpyWalletTokens() {
   if (now - lastSpyFetchTime < 600000 && cachedSpyTokens.length > 0) {
     return cachedSpyTokens;
   }
-  
+
   if (!CONFIG.SPY_WALLET_ADDRESS) {
     return [];
   }
@@ -332,14 +314,14 @@ async function discoverSpyWalletTokens() {
       console.warn("⚠️ [Cüzdan Casusu] Son işlemler alınamadı:", err.message || err);
     }
 
-    const mintList = Array.from(uniqueMints).slice(0, 15);
+    const mintList = Array.from(uniqueMints).filter(validMint).slice(0, SCANNER.maxTokens);
     const discovered: { symbol: string; mint: string }[] = [];
 
     if (mintList.length > 0) {
       try {
-        const dexRes = await fetch("https://api.dexscreener.com/latest/dex/tokens/" + mintList.join(","));
-        if (dexRes.ok) {
-          const dexData = await dexRes.json();
+        for (let offset = 0; offset < mintList.length; offset += 30) {
+          const pairs = await requestJson("https://api.dexscreener.com/tokens/v1/solana/" + mintList.slice(offset, offset + 30).join(","));
+          const dexData = { pairs };
           if (dexData && dexData.pairs) {
             const added = new Set<string>();
             for (const pair of dexData.pairs) {
@@ -383,104 +365,6 @@ async function discoverSpyWalletTokens() {
   return cachedSpyTokens;
 }
 
-function updateScanTargets(discoveredMemeTokens: { symbol: string; mint: string }[] = []) {
-  scanTargets.length = 0; // Temizle
-  
-  const defaultTargets = [
-    { symbol: "USDC", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
-    { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" },
-    { symbol: "BONK", mint: "DezXAZ8z7PnrnRJjz3wX4mTy3eUVVB8G3R6U47Hrkigw" },
-    { symbol: "JUP", mint: "JUPyiwrYJF1m4F9C6SrxadSZm8V7uhcFM637vMhXCm7" },
-    { symbol: "WIF", mint: "EKpQGSJtjMFqKZ98GWST69vThTZEgTUMmKW66m8zg1yO" },
-    { symbol: "SOL", mint: "So11111111111111111111111111111111111111112" },
-    { symbol: "RAY", mint: "4k3Dyjzv268fZU37fNgs9S4D276g6N65454g6Wb1b9" },
-    { symbol: "JTO", mint: "jtoJSonaZ7Y9au29jAnG8HjA21YToa96mTmeN9xH9A5" },
-    { symbol: "PYTH", mint: "HZ128fv7S275ChFG67BtNfY2CGmqmDscvv3vG185134r" },
-    { symbol: "POPCAT", mint: "7GCih6b4G6HscbyczHzQ2uwKs64RNFrzXUsVAX8pump" },
-    { symbol: "BOME", mint: "ukHH6c7mY6Mpe2Sg6Hg983CNZfXUzayCiwfCfRFQ98P" },
-    { symbol: "MEW", mint: "MEW1gQW8En8M9ScVv7ZrxM84JrgA9khf24GcH8Y6W9" },
-    { symbol: "DRIFT", mint: "DriFtupZv61Yja6fUc6v9PUt7XWxt78dM9sNY5Z28yf" },
-    { symbol: "KMNO", mint: "KMNo71gY6iSTmHSpEBnSTGh9V665fBsi63pUf39b6fP" },
-    { symbol: "HNT", mint: "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux" },
-    { symbol: "RENDER", mint: "rndr2356Z24P188m37P442P14532452345234523" },
-    { symbol: "TNSR", mint: "TNSRxcUxoT9xBG3de7PiJyA2v1sZ6f2eC8jJzT52aE" },
-    { symbol: "TRUMP", mint: "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfpump" },
-    { symbol: "FARTCOIN", mint: "9BB62P9uhC3DoC3E2S34P9uhC3DoC3E2S34P9uhpump" },
-    { symbol: "MOODENG", mint: "ED5A1221524234523452345234523452345234523" },
-    { symbol: "WEN", mint: "WENWENWENWENWENWENWENWENWENWENWENWENWENWENWEN" },
-    { symbol: "SLERF", mint: "7BgBvyJ3B23423423423423423423423423423423" },
-    { symbol: "MYRO", mint: "H3L23423423423423423423423423423423423423" },
-    { symbol: "PONKE", mint: "5z342342342342342342342342342342342342342" },
-    { symbol: "GIGA", mint: "6342342342342342342342342342342342342342" },
-    { symbol: "GOAT", mint: "CzLS20G2V3k3W323423423423423423423423423" },
-    { symbol: "ORCA", mint: "orcaEKT2A164619mgAsM2Uz1W8awB38o255TB7JU3qg" },
-    { symbol: "MNGO", mint: "MangoMzCSM32f32f32f32f32f32f32f32f32f32f32f32" },
-    { symbol: "SAMO", mint: "7xKX22vA472342342342342342342342342342342" },
-    { symbol: "CWIF", mint: "7atGFL34234234234234234234234234234234234" },
-    { symbol: "MSOL", mint: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So" },
-    { symbol: "BSOL", mint: "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1" },
-    { symbol: "JITOSOL", mint: "J1tosoL32f234234234234234234234234234234234" },
-    { symbol: "INF", mint: "5o342342342342342342342342342342342342342" },
-    { symbol: "ZETA", mint: "ZETA3423423423423423423423423423423423423" },
-    { symbol: "SHDW", mint: "SHDW2342342342342342342342342342342342342" },
-    { symbol: "NOS", mint: "nos23423423423423423423423423423423423423" },
-    { symbol: "HONEY", mint: "4v342342342342342342342342342342342342342" },
-    { symbol: "MOBILE", mint: "mb123423423423423423423423423423423423423" },
-    { symbol: "IO", mint: "BZ342342342342342342342342342342342342342" },
-    { symbol: "CLOUD", mint: "CLo34234234234234234234234234234234234234" },
-    { symbol: "MAX", mint: "MA342342342342342342342342342342342342342" },
-    { symbol: "ME", mint: "ME342342342342342342342342342342342342342" },
-    { symbol: "DBR", mint: "DB342342342342342342342342342342342342342" },
-    { symbol: "GRASS", mint: "Grass2342342342342342342342342342342342342" },
-    { symbol: "SPX", mint: "SPX23423423423423423423423423423423423423" },
-    { symbol: "PENGU", mint: "2zMM2343242342342342342342342342342342342" },
-    { symbol: "PNUT", mint: "2z234234234234234234234234234234234234234" },
-    { symbol: "CHILLGUY", mint: "CHILL234234234234234234234234234234234234" },
-    { symbol: "AI16Z", mint: "AI16Z234234234234234234234234234234234234" },
-    { symbol: "GRIFFAIN", mint: "GRIF2342342342342342342342342342342342342" }
-  ];
-
-  if (CONFIG.INTER_TOKEN === "ALL") {
-    for (const target of defaultTargets) {
-      if (target.mint !== CONFIG.START_MINT) {
-        scanTargets.push(target);
-      }
-    }
-  } else {
-    scanTargets.push({
-      symbol: CONFIG.INTER_TOKEN,
-      mint: CONFIG.INTER_MINT
-    });
-  }
-
-  // Özel eklenen mint adreslerini (pump.fun vb.) ayrıştır ve listeye ekle
-  if (CONFIG.CUSTOM_MINTS) {
-    const mints = CONFIG.CUSTOM_MINTS.split(",")
-      .map((m: any) => m.trim())
-      .filter((m: any) => m.length > 30);
-      
-    mints.forEach((mint, index) => {
-      if (!scanTargets.some(t => t.mint === mint)) {
-        const label = mint.toLowerCase().endsWith("pump") ? "PUMP" : "SPL";
-        scanTargets.push({
-          symbol: label + "_" + mint.substring(0, 4) + "..." + mint.substring(mint.length - 4),
-          mint: mint
-        });
-      }
-    });
-  }
-
-  // Otomatik keşfedilen trend meme coinleri ekle
-  if (discoveredMemeTokens && discoveredMemeTokens.length > 0) {
-    for (const token of discoveredMemeTokens) {
-      if (token.mint !== CONFIG.START_MINT && !scanTargets.some(t => t.mint === token.mint)) {
-        scanTargets.push(token);
-      }
-    }
-  }
-}
-
-// Listeyi oluştur (başlangıçta boş trend ile)
 updateScanTargets();
 
 // RPC URL Güvenlik Kontrolü ve Fallback
@@ -491,6 +375,9 @@ if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.sta
 
 // Cüzdan Kurulumu
 let wallet: Keypair;
+if (SCANNER.dryRun) {
+  wallet = Keypair.generate(); // No signing or broadcasting in scan mode.
+} else {
 if (!privateKeyString) {
   console.error("❌ HATA: SOLANA_PRIVATE_KEY ortam değişkeni tanımlanmamış!");
   process.exit(1);
@@ -508,6 +395,8 @@ try {
     console.error("❌ HATA: Özel anahtar (Private Key) çözümlenemedi!");
     process.exit(1);
   }
+}
+
 }
 
 // Solana Bağlantısı
@@ -535,61 +424,44 @@ async function sendTelegramNotification(message: string) {
 }
 
 // Entegre Jupiter API İletişim Durumu ve Rotalama Noktası
-let ACTIVE_JUPITER_API = CONFIG.JUPITER_API_URL || "https://quote-api.jup.ag/v6";
+let ACTIVE_JUPITER_API = CONFIG.JUPITER_API_URL || "https://api.jup.ag/swap/v1";
 
 /**
  * Jupiter API üzerinden teklif (quote) alır
  */
 async function getJupiterQuote(inputMint: string, outputMint: string, amount: number | string, slippageBps: number) {
-  const endpoints = CONFIG.JUPITER_API_URL 
-    ? [CONFIG.JUPITER_API_URL] 
-    : [ACTIVE_JUPITER_API, "https://quote-api.jup.ag/v6", "https://api.jup.ag/v6"];
-
-  for (const endpoint of endpoints) {
-    const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
-    const url = cleanEndpoint + "/quote?inputMint=" + inputMint + "&outputMint=" + outputMint + "&amount=" + amount + "&slippageBps=" + slippageBps + "&onlyDirectRoutes=false";
-    try {
-      const response = await fetch(url);
-      if (response.ok) {
-        if (!CONFIG.JUPITER_API_URL && endpoint !== ACTIVE_JUPITER_API) {
-          ACTIVE_JUPITER_API = endpoint;
-          console.log("🔄 JUPITER_API adresi otomatik olarak çalışan adrese çevrildi: " + ACTIVE_JUPITER_API);
-        }
-        return await response.json();
-      }
-    } catch (error) {
-      // Denemeye devam et
-    }
-  }
-  return null;
+  const endpoint = ACTIVE_JUPITER_API.endsWith('/') ? ACTIVE_JUPITER_API.slice(0, -1) : ACTIVE_JUPITER_API;
+  const query = new URLSearchParams({ inputMint, outputMint, amount: String(amount), slippageBps: String(slippageBps), onlyDirectRoutes: 'false', restrictIntermediateTokens: 'true' });
+  const quote = await requestJson(endpoint + '/quote?' + query, {}, true);
+  return quoteIsValid(quote, inputMint, outputMint, amount) ? quote : null;
 }
 
 /**
  * Teklifi (quote) Solana işlemine (Transaction) dönüştürür
  */
 async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
-  const endpoints = CONFIG.JUPITER_API_URL 
-    ? [CONFIG.JUPITER_API_URL] 
-    : [ACTIVE_JUPITER_API, "https://quote-api.jup.ag/v6", "https://api.jup.ag/v6"];
+  const endpoints = CONFIG.JUPITER_API_URL
+    ? [CONFIG.JUPITER_API_URL]
+    : [ACTIVE_JUPITER_API];
 
   for (const endpoint of endpoints) {
     const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
     const url = cleanEndpoint + "/swap";
     try {
-      const response = await fetch(url, {
+      const swapData = await requestJson(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quoteResponse,
           userPublicKey,
           wrapAndUnwrapSol: true,
-          computeUnitPriceMicroLamports: Math.round((CONFIG.PRIORITY_FEE_SOL * 10**9 * 10**6) / 1400000), 
+          computeUnitPriceMicroLamports: Math.round((CONFIG.PRIORITY_FEE_SOL * 10**9 * 10**6) / 1400000),
           dynamicComputeUnitLimit: true
         })
-      });
+      }, true);
 
-      if (response.ok) {
-        const { swapTransaction } = await response.json();
+      if (swapData.swapTransaction) {
+        const { swapTransaction } = swapData;
         return swapTransaction;
       }
     } catch (error) {
@@ -604,12 +476,12 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
  */
 async function sendBundleToJito(txs: VersionedTransaction[]) {
   const base64Txs = txs.map(tx => Buffer.from(tx.serialize()).toString("base64"));
-  
+
   const payload = {
     jsonrpc: "2.0",
     id: 1,
     method: "sendBundle",
-    params: [base64Txs]
+    params: [base64Txs, { encoding: "base64" }]
   };
 
   try {
@@ -631,30 +503,33 @@ async function sendBundleToJito(txs: VersionedTransaction[]) {
  */
 async function checkArbitrage() {
   let discovered: { symbol: string; mint: string }[] = [];
-  
+
   if (CONFIG.AUTO_DISCOVER_MEME) {
     const trending = await fetchTrendingMemeTokens();
     discovered = [...discovered, ...trending];
   }
-  
+
   if (CONFIG.AUTO_SPY_WALLET && CONFIG.SPY_WALLET_ADDRESS) {
     const spyTokens = await discoverSpyWalletTokens();
     discovered = [...discovered, ...spyTokens];
   }
-  
+
   updateScanTargets(discovered);
-  
+
   console.log("\\n🔍 [" + new Date().toLocaleTimeString() + "] Arbitraj taranıyor... Toplam Rota Sayısı: " + scanTargets.length);
-  
-  for (const target of scanTargets) {
+
+  const batch = nextScanBatch();
+  console.log("[Tarama] Bu tur: " + batch.length + " / " + scanTargets.length + " token");
+  for (const target of batch) {
     try {
+      const quoteStarted = Date.now();
       const route1 = await getJupiterQuote(
         CONFIG.START_MINT,
         target.mint,
         CONFIG.TRADE_AMOUNT_RAW,
         CONFIG.SLIPPAGE_BPS
       );
-      
+
       if (!route1) {
         continue;
       }
@@ -662,7 +537,7 @@ async function checkArbitrage() {
       const route2 = await getJupiterQuote(
         target.mint,
         CONFIG.START_MINT,
-        route1.outAmount,
+        route1.otherAmountThreshold,
         CONFIG.SLIPPAGE_BPS
       );
 
@@ -670,22 +545,38 @@ async function checkArbitrage() {
         continue;
       }
 
-      const finalAmountRaw = Number(route2.outAmount);
+      if (Date.now() - quoteStarted > SCANNER.maxQuoteAgeMs) continue;
+      // Independently quoted legs sharing a pool ignore the first leg's price impact.
+      const firstPools = new Set(route1.routePlan.map((r: any) => r.swapInfo?.ammKey));
+      if (route2.routePlan.some((r: any) => firstPools.has(r.swapInfo?.ammKey))) continue;
+      const conservativeRaw = BigInt(route2.otherAmountThreshold);
+      const finalAmountRaw = Number(conservativeRaw);
       const finalAmountHuman = finalAmountRaw / (10 ** CONFIG.START_DECIMALS);
-      
-      const profitRaw = finalAmountRaw - CONFIG.TRADE_AMOUNT_RAW;
-      const profitHuman = finalAmountHuman - CONFIG.TRADE_AMOUNT;
+
+      const profitRaw = conservativeRaw - BigInt(CONFIG.TRADE_AMOUNT_RAW);
+      const grossProfitHuman = Number(profitRaw) / 10 ** CONFIG.START_DECIMALS;
+      // Network fees are paid in SOL. Non-SOL starts need an explicit conversion estimate.
+      const solPrice = CONFIG.START_TOKEN === 'SOL' ? 1 : Number(process.env.SOL_PRICE_IN_START_TOKEN);
+      const feeKnown = Number.isFinite(solPrice) && solPrice > 0;
+      const feeSol = 2 * CONFIG.PRIORITY_FEE_SOL + 0.00001 + (CONFIG.USE_JITO ? Number(process.env.JITO_TIP_SOL || 0.00001) : 0);
+      if (!Number.isFinite(feeSol) || feeSol < 0) throw new Error('Geçersiz ücret tahmini');
+      const profitHuman = feeKnown ? grossProfitHuman - feeSol * solPrice : grossProfitHuman;
       const profitPct = (profitHuman / CONFIG.TRADE_AMOUNT) * 100;
 
       const logSign = profitHuman > 0 ? "📈" : "📉";
       console.log("   " + logSign + " Rota: " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + " | Sonuç: " + (profitHuman > 0 ? "+" : "") + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")");
-      
-      if (profitPct >= CONFIG.MIN_PROFIT_PCT) {
+
+      if (!feeKnown) { console.log('[Tarama] Ücret dönüşümü eksik; SOL_PRICE_IN_START_TOKEN ayarlayın. Brüt fark: ' + grossProfitHuman); continue; }
+      if (profitHuman > 0 && profitPct >= CONFIG.MIN_PROFIT_PCT) {
+        if (SCANNER.dryRun) {
+          console.log('[FIRSAT ADAYI / TARAMA] ' + target.symbol + ' | ücret ve slipaj sonrası tahmin: ' + profitHuman.toFixed(6) + ' ' + CONFIG.START_TOKEN + ' (%' + profitPct.toFixed(3) + ') | işlem gönderilmedi');
+          continue;
+        }
         console.log("   🎉 🎉 ARBİTRAJ FIRSATI BULUNDU! [" + target.symbol + "] Kâr Hedefi (%" + CONFIG.MIN_PROFIT_PCT + ") aşıldı! %" + profitPct.toFixed(3) + " kâr oranı.");
-        
+
         console.log("   [1/4] İlk takas işlemi oluşturuluyor...");
         const swapTx1Base64 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
-        
+
         console.log("   [2/4] İkinci takas işlemi oluşturuluyor...");
         const swapTx2Base64 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
 
@@ -709,22 +600,25 @@ async function checkArbitrage() {
         if (CONFIG.USE_JITO) {
           console.log("   [JITO] Jito MEV Blok Motoru ile atomik bundle gönderiliyor...");
           const res = await sendBundleToJito([tx1, tx2]);
-          console.log("   ✅ JITO Atomik Bundle Gönderimi yapıldı. Sonuç:", JSON.stringify(res));
-          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI (JITO BUNDLE)!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
+          if (!res?.result || res.error) throw new Error("Jito bundle kabul edilmedi");
+          console.log("   Jito bundle kabul edildi, zincir onayı doğrulanmadı:", res.result);
+          await sendTelegramNotification("🔔 *SOLArb BUNDLE GÖNDERİLDİ (ONAY BEKLİYOR)*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Tahmini Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
         } else {
           const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
+          const confirmed1 = await connection.confirmTransaction(sig1, "confirmed");
+          if (confirmed1.value.err) throw new Error("İlk takas başarısız");
           const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
           console.log("   [4/4] Onay bekleniyor...");
-          await connection.confirmTransaction(sig1, "confirmed");
-          await connection.confirmTransaction(sig2, "confirmed");
+          const confirmed2 = await connection.confirmTransaction(sig2, "confirmed");
+          if (confirmed2.value.err) throw new Error("İkinci takas başarısız; ara token bakiyesini kontrol edin");
           console.log("   ✅ İşlemler başarıyla onaylandı!");
-          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Elde Edilen Net Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
+          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Tahmini Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
         }
-        
-        break; 
+
+        break;
       }
-    } catch (err) {
-      // Devam et
+    } catch (err: any) {
+      console.warn("[Tarama] " + target.symbol + ": " + err.message);
     }
   }
 }
@@ -741,15 +635,16 @@ async function main() {
   console.log("📌 Jito MEV Koruması: " + (CONFIG.USE_JITO ? "AKTİF" : "PASİF"));
   console.log("==================================================");
 
-  await checkArbitrage();
-
-  setInterval(async () => {
+  console.log("Mod: " + (SCANNER.dryRun ? "TARAMA (işlem göndermez)" : "CANLI"));
+  while (true) {
     try {
       await checkArbitrage();
     } catch (e) {
       console.error("Döngü hatası:", e.message);
     }
-  }, CONFIG.SCAN_INTERVAL);
+    if (process.env.SOLANA_SCAN_ONCE === 'true') break;
+    await sleep(CONFIG.SCAN_INTERVAL);
+  }
 }
 
 main().catch((err) => {

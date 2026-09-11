@@ -1,19 +1,12 @@
-# SOLArb - Solana Arbitraj Botu (Solana Arbitrage Bot) 🚀
+# SOLArb — Solana arbitraj tarayıcısı
 
-Solana ağında yüksek hızda dairesel (circular) arbitraj fırsatlarını tespit eden ve Jito MEV korumasıyla otomatik olarak gerçekleştiren profesyonel, üretim kalitesinde bir arbitraj botu ve yapılandırma platformudur.
+Jupiter fiyat teklifleriyle dairesel arbitraj adaylarını arayan bot ve yapılandırma paneli. Yeni tarayıcı varsayılan 500, ayarlanabilir olarak 5000 tokena kadar takip eder; gerçek sayı likidite/hacim filtrelerine ve API verisine bağlıdır.
 
-Bu uygulama, Jupiter v6 API'si aracılığıyla Solana ağındaki en büyük DEX'leri (Raydium, Orca, Meteora vb.) milisaniyeler içinde tarayarak fiyat farklılıklarından kâr elde edilmesini simüle eder ve üretim sunucularınızda çalıştırabileceğiniz kaynak kodunu üretir.
+**[Geniş tarayıcı ayarları, kurulum ve test sonuçları](SCANNER_GUIDE.md)**
 
----
+Varsayılan mod işlem göndermez ve özel anahtar istemez. Jupiter token listesi ile DexScreener keşfi, adres doğrulama, 30 mintlik API sorguları, dönen tarama grupları ve API hız sınırı desteği içerir. Panelin simülasyon sonuçlarıyla gerçek bot loglarını birbirinden ayırın.
 
-## 🌟 Önemli Güvenlik ve Mimari Detayları
-
-* **Güvenli Sermaye Yönetimi (Cüzdan Sınırı):** Bot, cüzdanınızdaki tüm bakiyeyi asla riske atmaz. Arayüzden girdiğiniz **"İşlem Sermayesi"** (Örn: 1 SOL) her bir dairesel döngü için kullanılacak maksimum miktardır. Geri kalan bakiyeniz tamamen güvendedir ve dokunulmaz.
-* **Çoklu DEX (Multi-DEX) Altyapısı:** Arbitrajın doğası gereği tek bir borsa yerine en az iki borsa arasında eş zamanlı işlem yapılır. Bot, Jupiter API'yi kullanarak Raydium, Orca, Meteora, Phoenix, Lifinity gibi 30'dan fazla borsayı tarayarak en ucuz borsadan alır (DEX A) ve en pahalı borsada satar (DEX B).
-* **Jito MEV Blok Motoru Koruması:** Solana ağında sıklıkla görülen önden çalıştırma (front-running) ve sandviç (sandwich) saldırılarından korunmak için işlemler doğrudan mempool yerine Jito'nun özel validatör ağına "Bundle" (Paket) olarak gönderilir.
-* **Atomik İşlemler (Zarar Etmeme Garantisi):** Solana'nın akıllı sözleşmeleri ve talimat yapısı sayesinde, alım ve satım adımları tek bir işlem (transaction) içinde birleştirilir. Eğer borsa fiyatı saniyeler içinde değişir ve hedeflenen kârın altına düşerse, işlem ağda başarısız olur ve sadece minik bir ağ ücreti (priority fee) ödenir. Asla sermaye kaybı yaşanmaz.
-
----
+Fiyat farkı gerçekleşmiş kâr değildir. Mevcut canlı yürütme deneysel olup kâr veya sermaye koruması garantisi vermez. Jito paketinin kabul edilmesi zincir onayı anlamına gelmez; Jito dışındaki iki takas atomik değildir. Bu değişiklik canlı işlem yapılarak doğrulanmadı. Ayrıntılar ve yürütme sınırları tarayıcı kılavuzundadır.
 
 ## 🛠 Ubuntu 22.04 Kurulum Kılavuzu (Adım Adım)
 
@@ -26,9 +19,9 @@ sudo apt update && sudo apt upgrade -y
 ```
 
 ### 2. Node.js ve npm Kurulumu
-Botun çalışması için gerekli olan Node.js (v20 veya üzeri) kurulumunu yapın:
+Botun çalışması için gerekli olan Node.js (v22.18 veya üzeri) kurulumunu yapın:
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
 Kurulumun başarılı olduğunu doğrulamak için:
@@ -122,3 +115,4 @@ Botunuzu en yüksek verimle çalıştırmak için platform panelinde bulunan aya
 ## 📄 Lisans
 
 Bu proje MIT Lisansı altında sunulmaktadır. Eğitim amacıyla serbestçe geliştirilebilir ve paylaşılabilir.
+
