@@ -26,17 +26,11 @@ async function startServer() {
   // Helper to resolve paths dynamically depending on where PM2/node is started
   const getPaths = () => {
     const cwd = process.cwd();
-    // Check if we are already inside the SOLArb folder
-    const isInsideSOLArb = path.basename(cwd).toLowerCase() === "solarb";
-
-    let folderPath = cwd;
-    if (!isInsideSOLArb) {
-      folderPath = path.join(cwd, "SOLArb");
-    }
-
-    const botFile = path.join(folderPath, "bot.ts");
-    const configFile = path.join(folderPath, "config.json");
-    const relativeBotPath = isInsideSOLArb ? "bot.ts" : "SOLArb/bot.ts";
+    // A repository called SOLArb still stores its runner in the nested SOLArb directory.
+    const folderPath = fs.existsSync(path.join(cwd, 'package.json')) ? path.join(cwd, 'SOLArb') : cwd;
+    const botFile = path.join(folderPath, 'bot.ts');
+    const configFile = path.join(folderPath, 'config.json');
+    const relativeBotPath = path.relative(cwd, botFile);
 
     return {
       folderPath,
@@ -223,14 +217,16 @@ async function startServer() {
       }
 
       // Now query DexScreener to get symbols and names of these mints in bulk
-      const mintList = Array.from(uniqueMints).slice(0, 30); // limit to top 30
+      const mintList = Array.from(uniqueMints).slice(0, 5000);
       const discoveredTokens: { symbol: string; mint: string; name: string; price?: string }[] = [];
 
       if (mintList.length > 0) {
         try {
-          const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintList.join(",")}`);
-          if (dexRes.ok) {
-            const dexData = await dexRes.json();
+          for (let offset = 0; offset < mintList.length; offset += 30) {
+            if (offset) await new Promise(resolve => setTimeout(resolve, 250));
+            const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mintList.slice(offset, offset + 30).join(",")}`, { signal: AbortSignal.timeout(10000) });
+            if (!dexRes.ok) break;
+            const dexData = { pairs: await dexRes.json() };
             if (dexData && dexData.pairs) {
               const addedMints = new Set<string>();
               for (const pair of dexData.pairs) {
@@ -424,3 +420,4 @@ async function startServer() {
 }
 
 startServer();
+
