@@ -1,118 +1,16 @@
-# SOLArb — Solana arbitraj tarayıcısı
+# SOLArb
 
-Jupiter fiyat teklifleriyle dairesel arbitraj adaylarını arayan bot ve yapılandırma paneli. Yeni tarayıcı varsayılan 500, ayarlanabilir olarak 5000 tokena kadar takip eder; gerçek sayı likidite/hacim filtrelerine ve API verisine bağlıdır.
+Solana token keşfi, Jupiter teklifleriyle arbitraj adaylarının taranması ve ayrı Linux servisiyle deneysel canlı yürütme.
 
-**[Geniş tarayıcı ayarları, kurulum ve test sonuçları](SCANNER_GUIDE.md)**
+- Varsayılan 500, en fazla 5000 token; sıralı parti taraması ve API kota kontrolü.
+- Sunucu oturumuyla korunan, her zaman dry-run çalışan panel.
+- Ana sayfada herkese açık cüzdan adresi; tarayıcıda özel anahtar girişi yoktur.
+- Ayrı kullanıcı altında canlı bot, systemd credentials, zorunlu risk limitleri ve belirsiz sonuçta durdurma.
 
-Varsayılan mod işlem göndermez ve özel anahtar istemez. Jupiter token listesi ile DexScreener keşfi, adres doğrulama, 30 mintlik API sorguları, dönen tarama grupları ve API hız sınırı desteği içerir. Panelin simülasyon sonuçlarıyla gerçek bot loglarını birbirinden ayırın.
+**Kurulum:** [Ubuntu/VPS güvenlik ve kurulum rehberi](SECURITY_SETUP_TR.md). Eski PM2/public port/.env kurulum talimatlarının yerine bu rehberi kullanın. Canlı işlem yalnızca VPS üzerinden ayrıca etkinleştirilir.
 
-Fiyat farkı gerçekleşmiş kâr değildir. Mevcut canlı yürütme deneysel olup kâr veya sermaye koruması garantisi vermez. Jito paketinin kabul edilmesi zincir onayı anlamına gelmez; Jito dışındaki iki takas atomik değildir. Bu değişiklik canlı işlem yapılarak doğrulanmadı. Ayrıntılar ve yürütme sınırları tarayıcı kılavuzundadır.
+**Tarama:** [Tarayıcı ayarları](SCANNER_GUIDE.md).
 
-## 🛠 Ubuntu 22.04 Kurulum Kılavuzu (Adım Adım)
+Node.js >=22.18 gereklidir. Sırayla npm ci --ignore-scripts, npm test, npm run lint ve npm run build çalıştırın. npm start derlenmiş paneli başlatır; önce rehberdeki parola özeti ve ortam ayarları gerekir. .env otomatik yüklenmez. Bot şablonu değiştiğinde npm run generate:bot çalıştırın.
 
-Uygulamanın ve bot mekanizmasının kendi sunucunuzda veya yerel bilgisayarınızda sürekli ve kesintisiz çalışması için aşağıdaki adımları uygulayın.
-
-### 1. Sistemi Güncelleyin
-Öncelikle sunucunuzun paket listesini güncelleyin ve mevcut yazılımları yükseltin:
-```bash
-sudo apt update && sudo apt upgrade -y
-```
-
-### 2. Node.js ve npm Kurulumu
-Botun çalışması için gerekli olan Node.js (v22.18 veya üzeri) kurulumunu yapın:
-```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-```
-Kurulumun başarılı olduğunu doğrulamak için:
-```bash
-node -v
-npm -v
-```
-
-### 3. Projeyi Sunucunuza Çekin / İndirin
-ZIP olarak indirdiğiniz veya GitHub repomuzdan kopyaladığınız dosyaları sunucuya aktarın. Klasör adını **SOLArb** yaptıysanız:
-```bash
-cd SOLArb
-```
-
-### 4. Bağımlılıkları Yükleyin
-Solana Web3 kütüphaneleri, Jupiter SDK ve gerekli diğer tüm modülleri yükleyin:
-```bash
-npm install
-```
-
-### 5. Web Arayüzünü ve Sunucusunu Derleyin (Build)
-Uygulamanın web tabanlı simülatör panelini, canlı izleyicisini ve güvenli giriş sistemini sunucuya hazır hale getirmek için projeyi derleyin. Bu komut hem istemciyi (React) hem de arka plan Node sunucusunu (Express) derleyip tek bir paket haline getirir:
-```bash
-npm run build
-```
-
-### 6. PM2 Kurulumu (Yönetim Paneli ve Botun 7/24 Kesintisiz Çalışması İçin)
-Terminali kapatsanız bile web panelinin ve botun sunucuda 7/24 çalışmaya devam etmesi için PM2 yöneticisini küresel olarak yükleyin:
-```bash
-sudo npm install -g pm2
-```
-
-### 7. Sunucuyu ve Botu PM2 ile Başlatın
-
-#### A) Web Yönetim Panelini Başlatma (Tarayıcıdan Giriş İçin)
-Web arayüzüne tarayıcınızdan `http://<SUNUCU-IP-ADRESINIZ>:3000` adresi üzerinden erişmek için Express web sunucusunu PM2 ile arka planda başlatın:
-```bash
-pm2 start npm --name "solana-web-panel" -- start
-```
-*Not: Eğer sunucunuzda dışarıdan 3000 portuna erişim kapalıysa, Ubuntu güvenlik duvarından (UFW) bu portu açmanız gerekir:*
-```bash
-sudo ufw allow 3000/tcp
-```
-*Artık tarayıcınızdan `http://84.247.165.65:3000` yazarak kullanıcı adı ve şifrenizle giriş yapabilirsiniz.*
-
-#### B) Arka Plan Arbitraj Botunu Başlatma (Güvenli ve Doğrudan Sunucudan!)
-Bilgisayarınıza `bot.ts` dosyasını indirip düzenleme ve tekrar yükleme zahmetinden kurtulmak için, Web Panelindeki kod sekmesinde bulunan **"SUNUCUYA KAYDET (SOLArb)"** butonuna tıklayın. Bu işlem, yapılandırdığınız kodu doğrudan sunucunuzdaki `SOLArb/bot.ts` konumuna kaydedecektir!
-
-Ardından botu PM2 ile 7/24 kesintisiz çalışacak şekilde başlatın:
-```bash
-pm2 start "npx tsx SOLArb/bot.ts" --name "SOLArb"
-```
-
-### 8. Sunucu Yeniden Başlatma Koruması
-Sunucu çökerse veya yeniden başlatılırsa botun otomatik olarak kaldığı yerden açılması için PM2 servisini sisteme entegre edin:
-```bash
-pm2 startup
-```
-*(Yukarıdaki komutu yazdıktan sonra terminal ekranında beliren `sudo env PATH=...` ile başlayan komutu kopyalayıp terminale yapıştırın ve çalıştırın.)*
-
-Yapılandırmayı kaydedin:
-```bash
-pm2 save
-```
-
----
-
-## ⚙️ Yapılandırma ve Parametre Ayarları
-
-Botunuzu en yüksek verimle çalıştırmak için platform panelinde bulunan ayarları optimize edin:
-
-1. **Solana RPC Sağlayıcı URL:** Mainnet işlemlerinde yüksek hız için Helius, QuickNode veya Triton gibi özel bir RPC düğümü (Private RPC) kullanılması şiddetle tavsiye edilir.
-2. **Başlangıç Varlığı (A) & Ara Varlık (B):** İşlem sermayenizin olduğu ana birimi (SOL veya USDC) ve rotada takas edilerek fırsat aranacak ara birimi (USDT, BONK vb.) seçin.
-3. **İşlem Sermayesi:** Her arbitraj turunda kullanılacak maksimum bakiye limiti. *Güvenli sınır kuralı gereğince cüzdanın tamamı değil, sadece bu kadarı işleme sokulur.*
-4. **Minimum Kâr Hedefi:** İşlemin gerçekleşmesi için net olarak kalması gereken yüzde oran (Örn: %0.15).
-5. **Maksimum Slipaj (Slippage):** Fiyat kayma toleransı. Milisaniyeler içindeki fiyat oynamalarında işlemin iptal olmaması için ideal oran %0.1 - %0.5 arasıdır.
-6. **Öncelik Ücreti (Priority Fee):** Solana ağında işlemlerinizin blok zincirine diğerlerinden hızlı yazılması için ödeyeceğiniz ekstra SOL miktarı.
-7. **Tarama Sıklığı:** Botun yeni fiyatları ve rotaları sorgulama aralığı (saniye bazında).
-
----
-
-## ⚠️ Önemli Risk ve Yatırım Uyarısı
-
-* Bu proje **eğitim, simülasyon ve kod üretimi** amacıyla tasarlanmıştır.
-* Gerçek Solana ana ağında (Mainnet-Beta) işlem yapmak finansal riskler içerir.
-* Kodları kendi bilgisayarınızda çalıştırmadan önce lütfen test ağlarında (Devnet) deneyin.
-* **CÜZDAN GÜVENLİĞİ:** Özel anahtarlarınızı (Private Key / Seed Phrase) asla internet üzerindeki üçüncü taraf web sitelerine, tarayıcılara veya güvenmediğiniz bot panellerine girmeyin. Sunucu tarafında çalışan `bot.ts` dosyasını kendi güvenli makinenizde izole olarak çalıştırın.
-
----
-
-## 📄 Lisans
-
-Bu proje MIT Lisansı altında sunulmaktadır. Eğitim amacıyla serbestçe geliştirilebilir ve paylaşılabilir.
-
+Canlı yürütme gerçek para ile doğrulanmamıştır ve bağımsız güvenlik denetiminden geçmemiştir. Teklif kârı gerçekleşmiş kâr değildir. Anahtarı daha önce eski panele/GitHub'a koyduysanız yeni cüzdana geçin.

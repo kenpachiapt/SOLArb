@@ -30,6 +30,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { generateArbitrageCode, TOKEN_MINTS, TOKEN_DECIMALS } from './arbitrageCode';
 import { INSTALLATION_GUIDE, RISKS_AND_TIPS } from './guideData';
+import { apiFetch, setCsrf } from './api';
+import { WalletAddressCard } from './WalletAddressCard';
 
 // Fallback prices in USD
 const FALLBACK_PRICES = {
@@ -67,8 +69,8 @@ export default function App() {
   const [scanBatchSize, setScanBatchSize] = useState<number>(() => Number(localStorage.getItem('solarb_scanBatchSize') ?? 25));
   const [minLiquidityUsd, setMinLiquidityUsd] = useState<number>(() => Number(localStorage.getItem('solarb_minLiquidityUsd') ?? 50000));
   const [minVolume24hUsd, setMinVolume24hUsd] = useState<number>(() => Number(localStorage.getItem('solarb_minVolume24hUsd') ?? 10000));
-  const [dryRun, setDryRun] = useState(() => localStorage.getItem('solarb_dryRun') !== 'false');
-  const [rpcUrl, setRpcUrl] = useState<string>(() => localStorage.getItem('solarb_rpc_url') || 'https://api.mainnet-beta.solana.com');
+  const dryRun = true;
+  const rpcUrl = 'https://api.mainnet-beta.solana.com';
   const [startToken, setStartToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK'>(() => (localStorage.getItem('solarb_start_token') as any) || 'SOL');
   const [interToken, setInterToken] = useState<'SOL' | 'USDC' | 'USDT' | 'BONK' | 'JUP' | 'WIF' | 'ALL'>(() => (localStorage.getItem('solarb_inter_token') as any) || 'USDC');
   const [amount, setAmount] = useState<number>(() => {
@@ -95,7 +97,7 @@ export default function App() {
     const saved = localStorage.getItem('solarb_scan_interval');
     return saved !== null ? Number(saved) : 5;
   });
-  const [jupiterApiUrl, setJupiterApiUrl] = useState<string>(() => localStorage.getItem('solarb_jupiter_api_url') || '');
+  const jupiterApiUrl = 'https://api.jup.ag/swap/v1';
   const [customMints, setCustomMints] = useState<string>(() => localStorage.getItem('solarb_custom_mints') || '');
   const [autoDiscoverMeme, setAutoDiscoverMeme] = useState<boolean>(() => {
     const saved = localStorage.getItem('solarb_auto_discover_meme');
@@ -117,7 +119,6 @@ export default function App() {
     localStorage.setItem('solarb_minLiquidityUsd', String(minLiquidityUsd));
     localStorage.setItem('solarb_minVolume24hUsd', String(minVolume24hUsd));
     localStorage.setItem('solarb_dryRun', String(dryRun));
-    localStorage.setItem('solarb_rpc_url', rpcUrl);
     localStorage.setItem('solarb_start_token', startToken);
     localStorage.setItem('solarb_inter_token', interToken);
     localStorage.setItem('solarb_amount', String(amount));
@@ -126,25 +127,20 @@ export default function App() {
     localStorage.setItem('solarb_use_jito', String(useJito));
     localStorage.setItem('solarb_priority_fee_sol', String(priorityFeeSol));
     localStorage.setItem('solarb_scan_interval', String(scanInterval));
-    localStorage.setItem('solarb_jupiter_api_url', jupiterApiUrl);
     localStorage.setItem('solarb_custom_mints', customMints);
     localStorage.setItem('solarb_auto_discover_meme', String(autoDiscoverMeme));
     localStorage.setItem('solarb_spy_wallet_address', spyWalletAddress);
     localStorage.setItem('solarb_auto_spy_wallet', String(autoSpyWallet));
   }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun]);
 
-  // Telegram Notifications States
-  const [telegramToken, setTelegramToken] = useState<string>(() => localStorage.getItem('telegram_token') || '');
-  const [telegramChatId, setTelegramChatId] = useState<string>(() => localStorage.getItem('telegram_chat_id') || '');
-
-  // Solana Wallet Private Key
-  const [privateKey, setPrivateKey] = useState<string>(() => localStorage.getItem('solana_private_key') || '');
-
-  // Authentication & Panel Security States
-  const [panelUsername, setPanelUsername] = useState<string>(() => localStorage.getItem('panel_username') || 'admin');
-  const [panelPassword, setPanelPassword] = useState<string>(() => localStorage.getItem('panel_password') || 'solana123');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem('panel_logged_in') === 'true');
-  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  useEffect(() => {
+    for (const key of ['solana_private_key','panel_password','panel_username','panel_logged_in','telegram_token','telegram_chat_id','solarb_rpc_url','solarb_jupiter_api_url']) localStorage.removeItem(key);
+    const expire = () => { setIsAuthenticated(false); setCsrf(''); };
+    window.addEventListener('solarb-session-expired', expire);
+    apiFetch('/api/session').then(async r => { if (r.ok) { const d=await r.json(); setCsrf(d.csrf); setIsAuthenticated(true); } }).catch(expire);
+    return () => window.removeEventListener('solarb-session-expired', expire);
+  }, []);
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
 
@@ -169,7 +165,7 @@ export default function App() {
     
     const fetchBotStatus = async () => {
       try {
-        const response = await fetch('/api/bot/status');
+        const response = await apiFetch('/api/bot/status');
         if (!response.ok) return;
         
         const contentType = response.headers.get('content-type');
@@ -187,11 +183,12 @@ export default function App() {
       }
     };
 
+    if (!isAuthenticated) return;
     fetchBotStatus(); // Fetch immediately
     intervalId = setInterval(fetchBotStatus, 2000); // Poll every 2 seconds
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleScanSpyWallet = async () => {
     if (!spyWalletAddress) {
@@ -202,7 +199,7 @@ export default function App() {
     setSpyError('');
     const activeRpc = rpcUrl ? rpcUrl.trim() : 'https://api.mainnet-beta.solana.com';
     try {
-      const response = await fetch(`/api/spy-wallet?walletAddress=${encodeURIComponent(spyWalletAddress)}&rpcUrl=${encodeURIComponent(activeRpc)}`);
+      const response = await apiFetch(`/api/spy-wallet?walletAddress=${encodeURIComponent(spyWalletAddress)}`);
       const data = await response.json();
       if (response.ok && data.success) {
         setSpyDiscoveredTokens(data.tokens || []);
@@ -256,9 +253,9 @@ export default function App() {
     setIsStartingBot(true);
     try {
       // Auto-save configuration to server first before starting the bot, to ensure bot.ts has the latest values!
-      await handleSaveToServer();
+      if (!await handleSaveToServer()) return;
 
-      const response = await fetch('/api/bot/start', { method: 'POST' });
+      const response = await apiFetch('/api/bot/start', { method: 'POST' });
       const data = await response.json();
       if (data.success) {
         addLog("▶️ Gerçek Solana Botu sunucuda başarıyla başlatıldı!", "success");
@@ -278,7 +275,7 @@ export default function App() {
   const handleStopRealBot = async () => {
     setIsStoppingBot(true);
     try {
-      const response = await fetch('/api/bot/stop', { method: 'POST' });
+      const response = await apiFetch('/api/bot/stop', { method: 'POST' });
       const data = await response.json();
       if (data.success) {
         addLog("⏸️ Gerçek Solana Botu sunucuda durduruldu.", "warning");
@@ -294,10 +291,6 @@ export default function App() {
     }
   };
 
-  // Telegram Testing States
-  const [telegramTestStatus, setTelegramTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [telegramTestMessage, setTelegramTestMessage] = useState<string>('');
-
   // Save Server States
   const [saveServerStatus, setSaveServerStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [saveServerMessage, setSaveServerMessage] = useState<string>('');
@@ -306,11 +299,10 @@ export default function App() {
   useEffect(() => {
     const loadServerConfig = async () => {
       try {
-        const response = await fetch('/api/load-config');
+        const response = await apiFetch('/api/load-config');
         const data = await response.json();
         if (data.success && data.config) {
           const cfg = data.config;
-          if (cfg.rpcUrl) setRpcUrl(cfg.rpcUrl);
           if (cfg.startToken) setStartToken(cfg.startToken);
           if (cfg.interToken) setInterToken(cfg.interToken);
           if (cfg.amount !== undefined) setAmount(Number(cfg.amount));
@@ -319,18 +311,11 @@ export default function App() {
           if (cfg.useJito !== undefined) setUseJito(cfg.useJito === true || cfg.useJito === 'true');
           if (cfg.priorityFeeSol !== undefined) setPriorityFeeSol(Number(cfg.priorityFeeSol));
           if (cfg.scanInterval !== undefined) setScanInterval(Number(cfg.scanInterval));
-          if (cfg.telegramToken) setTelegramToken(cfg.telegramToken);
-          if (cfg.telegramChatId) setTelegramChatId(cfg.telegramChatId);
-          if (cfg.privateKey) setPrivateKey(cfg.privateKey);
-          if (cfg.panelUsername) setPanelUsername(cfg.panelUsername);
-          if (cfg.panelPassword) setPanelPassword(cfg.panelPassword);
-          if (cfg.jupiterApiUrl) setJupiterApiUrl(cfg.jupiterApiUrl);
           if (cfg.customMints) setCustomMints(cfg.customMints);
           if (cfg.maxTokens !== undefined) setMaxTokens(Number(cfg.maxTokens));
           if (cfg.scanBatchSize !== undefined) setScanBatchSize(Number(cfg.scanBatchSize));
           if (cfg.minLiquidityUsd !== undefined) setMinLiquidityUsd(Number(cfg.minLiquidityUsd));
           if (cfg.minVolume24hUsd !== undefined) setMinVolume24hUsd(Number(cfg.minVolume24hUsd));
-          if (cfg.dryRun !== undefined) setDryRun(cfg.dryRun !== false && cfg.dryRun !== 'false');
           if (cfg.autoDiscoverMeme !== undefined) setAutoDiscoverMeme(cfg.autoDiscoverMeme === true || cfg.autoDiscoverMeme === 'true');
           if (cfg.spyWalletAddress) setSpyWalletAddress(cfg.spyWalletAddress);
           if (cfg.autoSpyWallet !== undefined) setAutoSpyWallet(cfg.autoSpyWallet === true || cfg.autoSpyWallet === 'true');
@@ -339,8 +324,8 @@ export default function App() {
         console.error("Sunucudan konfigürasyon yüklenirken hata:", err);
       }
     };
-    loadServerConfig();
-  }, []);
+    if (isAuthenticated) loadServerConfig();
+  }, [isAuthenticated]);
 
   // Prices State
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
@@ -468,9 +453,7 @@ export default function App() {
       useJito,
       priorityFeeSol,
       scanIntervalMs: scanInterval * 1000,
-      telegramToken,
-      telegramChatId,
-      privateKey,
+
       jupiterApiUrl,
       customMints,
       autoDiscoverMeme,
@@ -478,7 +461,7 @@ export default function App() {
       spyWalletAddress,
       autoSpyWallet
     });
-  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, telegramToken, telegramChatId, privateKey, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun]);
+  }, [rpcUrl, startToken, interToken, amount, minProfitPct, slippagePct, useJito, priorityFeeSol, scanInterval, jupiterApiUrl, customMints, autoDiscoverMeme, spyWalletAddress, autoSpyWallet, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun]);
 
   // Download Code File
   const handleDownloadCode = () => {
@@ -494,94 +477,18 @@ export default function App() {
 
   // Save Code and Config to Server
   const handleSaveToServer = async () => {
-    setSaveServerStatus('saving');
-    setSaveServerMessage('');
+    setSaveServerStatus('saving'); setSaveServerMessage('');
     try {
-      // 1. Save Code file
-      const response = await fetch('/api/save-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: generatedCode })
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        // 2. Save UI Config file
-        await fetch('/api/save-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rpcUrl,
-            startToken,
-            interToken,
-            amount,
-            minProfitPct,
-            slippagePct,
-            useJito,
-            priorityFeeSol,
-            scanInterval,
-            telegramToken,
-            telegramChatId,
-            privateKey,
-            panelUsername,
-            panelPassword,
-            jupiterApiUrl,
-            customMints,
-            autoDiscoverMeme,
-      maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd, dryRun,
-            spyWalletAddress,
-            autoSpyWallet
-          })
-        });
-
-        setSaveServerStatus('success');
-        setSaveServerMessage('Başarılı! bot.ts ve ayarlar sunucuya kaydedildi.');
-        addLog('💾 bot.ts kod dosyası ve yapılandırma ayarları sunucudaki /SOLArb/ konumuna kaydedildi.', 'success');
-        setTimeout(() => setSaveServerStatus('idle'), 4000);
-      } else {
-        setSaveServerStatus('error');
-        setSaveServerMessage(data.error || 'Kaydetme başarısız oldu.');
-      }
-    } catch (err: any) {
-      setSaveServerStatus('error');
-      setSaveServerMessage(err.message || 'Sunucu bağlantı hatası.');
-    }
-  };
-
-  // Test Telegram Connection
-  const handleTestTelegram = async () => {
-    if (!telegramToken || !telegramChatId) {
-      setTelegramTestStatus('error');
-      setTelegramTestMessage('Lütfen önce Bot Token ve Sohbet (Chat) ID alanlarını doldurun.');
-      return;
-    }
-    setTelegramTestStatus('testing');
-    setTelegramTestMessage('');
-    
-    try {
-      const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: telegramChatId,
-          text: `🔔 *Solana Arbitraj Kontrol Paneli*\n\n✅ Tebrikler! Telegram bildirim botunuz başarıyla bağlandı.\n\n🤖 *Bot Durumu:* Aktif (Canlı Simülasyon)\n⚙️ *Kullanıcı:* ${panelUsername}\n🛰️ *RPC Sunucusu:* ${rpcUrl.substring(0, 30)}...`,
-          parse_mode: 'Markdown'
-        })
-      });
-      const data = await response.json();
-      if (data.ok) {
-        setTelegramTestStatus('success');
-        setTelegramTestMessage('Başarılı! Telegram botunuzdan telefonunuza bir test mesajı gönderildi.');
-        addLog('📱 Telegram bot bağlantısı başarıyla test edildi.', 'success');
-      } else {
-        setTelegramTestStatus('error');
-        setTelegramTestMessage(`Hata: ${data.description || 'API isteği başarısız.'}`);
-      }
-    } catch (err: any) {
-      setTelegramTestStatus('error');
-      setTelegramTestMessage(`Bağlantı hatası: ${err.message || 'Bilinmeyen bir hata oluştu.'}`);
-    }
+      const response = await apiFetch('/api/save-config', { method:'POST', body:JSON.stringify({
+        startToken, interToken, amount, minProfitPct, slippagePct, useJito:true, priorityFeeSol, scanInterval,
+        customMints, autoDiscoverMeme, maxTokens, scanBatchSize, minLiquidityUsd, minVolume24hUsd,
+        dryRun:true, spyWalletAddress, autoSpyWallet,
+      }) });
+      const data=await response.json();
+      if (!response.ok) throw new Error(data.error || 'Ayarlar kaydedilemedi.');
+      setSaveServerStatus('success'); setSaveServerMessage('Tarama ayarları kaydedildi. Canlı bot ayarları VPS üzerinde yönetilir.');
+      return true;
+    } catch (error: any) { setSaveServerStatus('error'); setSaveServerMessage(error.message); return false; }
   };
 
   // Copy Code to Clipboard
@@ -845,27 +752,17 @@ export default function App() {
               <p className="text-xs text-zinc-400 uppercase tracking-widest font-mono">Solana Arbitraj Kontrol Sistemi</p>
             </div>
 
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
-              if (loginUsername === panelUsername && loginPassword === panelPassword) {
-                setIsAuthenticated(true);
-                localStorage.setItem('panel_logged_in', 'true');
-                setLoginError('');
-              } else {
-                setLoginError('Hatalı kullanıcı adı veya şifre girdiniz.');
-              }
+              try {
+                const r=await apiFetch('/api/login', {method:'POST',body:JSON.stringify({password:loginPassword})});
+                const d=await r.json();
+                if (!r.ok) { setLoginError(d.error || 'Giriş başarısız.'); return; }
+                setCsrf(d.csrf); setIsAuthenticated(true); setLoginError('');
+              } catch { setLoginError('Sunucuya bağlanılamadı.'); }
+              finally { setLoginPassword(''); }
             }} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Kullanıcı Adı</label>
-                <input
-                  type="text"
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
-                  placeholder="Kullanıcı adı girin"
-                  required
-                  className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
+              
 
               <div className="space-y-1.5">
                 <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Giriş Şifresi</label>
@@ -895,7 +792,7 @@ export default function App() {
 
             <div className="pt-4 border-t border-[#222226] text-center">
               <p className="text-[9px] text-zinc-500 font-mono">
-                Varsayılan Bilgiler: Kullanıcı: <strong className="text-zinc-400">admin</strong> | Şifre: <strong className="text-zinc-400">solana123</strong>
+                VPS kurulumu sırasında belirlediğiniz yönetici parolasını kullanın.
               </p>
             </div>
           </div>
@@ -921,10 +818,7 @@ export default function App() {
           <div className="flex flex-col items-start md:items-end gap-1.5">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => {
-                  setIsAuthenticated(false);
-                  localStorage.removeItem('panel_logged_in');
-                }}
+                onClick={async () => { await apiFetch('/api/logout', {method:'POST'}); setCsrf(''); setIsAuthenticated(false); }}
                 className="px-2.5 py-1 text-[10px] font-mono border border-rose-500/20 text-rose-400 bg-rose-500/5 hover:bg-rose-500/15 transition-all uppercase tracking-wider"
               >
                 Çıkış Yap
@@ -946,7 +840,7 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-4 text-zinc-400">
             <span className="flex items-center gap-1.5 text-indigo-400 uppercase tracking-wider text-[10px] font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-              SOLANA NETWORK: SECURE
+              SOLANA MAINNET
             </span>
             <span className="text-zinc-600">|</span>
             <div className="flex flex-wrap items-center gap-3.5 text-zinc-300">
@@ -974,12 +868,13 @@ export default function App() {
 
       {/* Main Content Dashboard */}
       <main className="max-w-7xl mx-auto px-6 lg:px-10 py-8 space-y-8">
+        <WalletAddressCard />
         
         {/* Warning Banner: Editorial Style */}
         <div className="bg-[#121215] border border-[#222226] rounded-none p-5 flex gap-4 items-start">
           <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-xs text-zinc-400 leading-relaxed">
-            <span className="font-serif italic font-semibold text-white">Güvenlik ve Risk Hatırlatması:</span> Solana ağında kârlı arbitraj yapmak; yüksek hız (Özel RPC düğümleri), MEV korumalı iletim (Jito) ve optimize edilmiş parametreler gerektirir. Bu platform, botun çalışma mantığını görselleştirmek, ayarlarınızı test edip <strong className="text-white">kendi bilgisayarınızda çalıştırabileceğiniz üretim kalitesinde bot kodunu</strong> güvenle üretmek için tasarlanmıştır. Cüzdan anahtarlarınızı asla hiçbir web sitesine girmeyin!
+            <span className="font-serif italic font-semibold text-white">Güvenlik ve Risk Hatırlatması:</span> Solana ağında kârlı arbitraj yapmak; yüksek hız (Özel RPC düğümleri), MEV korumalı iletim (Jito) ve optimize edilmiş parametreler gerektirir. Bu platform, botun çalışma mantığını görselleştirmek, ayarlarınızı test edip <strong className="text-white">anahtarsız tarama kodunu</strong> güvenle üretmek için tasarlanmıştır. Cüzdan anahtarlarınızı asla hiçbir web sitesine girmeyin!
           </div>
         </div>
 
@@ -1006,7 +901,7 @@ export default function App() {
                 <input
                   type="text"
                   value={rpcUrl}
-                  onChange={(e) => setRpcUrl(e.target.value)}
+                  readOnly
                   className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                   placeholder="https://api.mainnet-beta.solana.com"
                 />
@@ -1021,7 +916,7 @@ export default function App() {
                 <input
                   type="text"
                   value={jupiterApiUrl}
-                  onChange={(e) => setJupiterApiUrl(e.target.value)}
+                  readOnly
                   className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                   placeholder="Yedekli rotasyon için boş bırakın"
                 />
@@ -1078,7 +973,7 @@ export default function App() {
                   </label>
                 </div>
                 <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
-                  Likidite ve hacim filtrelerini geçen tokenlar sırayla taranır. Geniş liste için sunucudaki .env dosyasına JUPITER_API_KEY ekleyin. Gerçek takip sayısı API sonuçlarına ve filtrelere bağlıdır.
+                  Likidite ve hacim filtrelerini geçen tokenlar sırayla taranır. Geniş liste için sunucudaki panel.env dosyasına SCANNER_JUPITER_API_KEY ekleyin. Gerçek takip sayısı API sonuçlarına ve filtrelere bağlıdır.
                 </p>
               </div>
 
@@ -1094,7 +989,7 @@ export default function App() {
 <label className="text-[11px] text-zinc-400">Minimum 24 saat hacim (USD)
  <input type="number" min={0} max={1000000000000} value={minVolume24hUsd} onChange={e => setMinVolume24hUsd(Math.min(1000000000000, Math.max(0, Number(e.target.value))))} className="w-full bg-[#0B0B0D] border border-[#222226] px-3 py-2 text-zinc-200" />
  </label></div>
- <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} />Sadece tara — işlem gönderme</label>
+ <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={dryRun} disabled />Sadece tara — işlem gönderme</label>
  <p className="text-[10px] text-zinc-500">500 token için en az 1.000 teklif gerekir. API hızınıza göre tam tur dakikalar sürebilir. Sonuçlar arka plan botunun loglarında görünür; panel simülasyonu gerçek fırsat değildir.</p>
               {/* Custom Token Mints (Pump.fun / SPL) */}
               <div className="space-y-2">
@@ -1295,7 +1190,7 @@ export default function App() {
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={useJito}
+                      checked={true} disabled
                       onChange={(e) => setUseJito(e.target.checked)}
                       className="sr-only peer"
                     />
@@ -1330,88 +1225,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Telegram Notification configuration */}
-              <div className="border-t border-[#222226] pt-4 space-y-3">
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
-                    <Send className="w-3.5 h-3.5 text-sky-400" />
-                    Telegram Bildirimleri
-                  </span>
-                  <span className="text-[9px] font-mono text-zinc-500">Opsiyonel</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Bot Token</label>
-                    <input
-                      type="password"
-                      value={telegramToken}
-                      onChange={(e) => {
-                        setTelegramToken(e.target.value);
-                        localStorage.setItem('telegram_token', e.target.value);
-                      }}
-                      placeholder="123456:ABC-DEF..."
-                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Sohbet (Chat) ID</label>
-                    <input
-                      type="text"
-                      value={telegramChatId}
-                      onChange={(e) => {
-                        setTelegramChatId(e.target.value);
-                        localStorage.setItem('telegram_chat_id', e.target.value);
-                      }}
-                      placeholder="987654321"
-                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-                <p className="text-[9px] text-zinc-500 leading-normal">
-                  Telegram botunuz üzerinden arbitraj gerçekleştiğinde anlık bildirim alabilirsiniz. `@BotFather` aracılığıyla bir bot oluşturun.
-                </p>
-              </div>
-
-              {/* Panel Authentication configuration */}
-              <div className="border-t border-[#222226] pt-4 space-y-3">
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
-                    Panel Giriş Bilgileri
-                  </span>
-                  <span className="text-[9px] font-mono text-zinc-500">Güvenlik</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Kullanıcı Adı</label>
-                    <input
-                      type="text"
-                      value={panelUsername}
-                      onChange={(e) => {
-                        setPanelUsername(e.target.value);
-                        localStorage.setItem('panel_username', e.target.value);
-                      }}
-                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">Şifre</label>
-                    <input
-                      type="text"
-                      value={panelPassword}
-                      onChange={(e) => {
-                        setPanelPassword(e.target.value);
-                        localStorage.setItem('panel_password', e.target.value);
-                      }}
-                      className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-                <p className="text-[9px] text-zinc-500 leading-normal">
-                  Giriş ekranı için belirlediğiniz kullanıcı adı ve şifre. Bilgiler güvenle tarayıcınızda (Local Storage) saklanır.
-                </p>
-              </div>
-
+<p className="text-xs text-zinc-400">Özel anahtar ve Telegram bilgileri yalnızca VPS üzerindeki bot servisinde yönetilir. Panel parolası sunucuda değiştirilir.</p>
               {/* Calculated Targets Overview */}
               <div className="pt-4 border-t border-[#222226] text-[11px] text-zinc-400 space-y-2 font-mono">
                 <div className="flex justify-between">
@@ -1995,7 +1809,7 @@ export default function App() {
                         ) : (
                           <Save className="w-4 h-4" />
                         )}
-                        SUNUCUYA KAYDET (SOLArb)
+                        TARAMA AYARLARINI KAYDET
                       </button>
                       <button
                         onClick={handleDownloadCode}
@@ -2205,173 +2019,7 @@ export default function App() {
                 {/* Left Column (8 cols): Configuration Panels */}
                 <div className="lg:col-span-8 space-y-6">
                   
-                  {/* Telegram Notification Card */}
-                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
-                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Send className="w-5 h-5 text-sky-400" />
-                        <div>
-                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Telegram Bildirim Kanalı</h4>
-                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">ANLIK ARBİTRAJ VE HATA BİLDİRİMLERİ</p>
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Entegrasyon</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Bot Token (TELEGRAM_TOKEN)</label>
-                        <input
-                          type="password"
-                          value={telegramToken}
-                          onChange={(e) => {
-                            setTelegramToken(e.target.value);
-                            localStorage.setItem('telegram_token', e.target.value);
-                          }}
-                          placeholder="Örn: 123456789:ABCdefGhI..."
-                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Sohbet ID (TELEGRAM_CHAT_ID)</label>
-                        <input
-                          type="text"
-                          value={telegramChatId}
-                          onChange={(e) => {
-                            setTelegramChatId(e.target.value);
-                            localStorage.setItem('telegram_chat_id', e.target.value);
-                          }}
-                          placeholder="Örn: 987654321"
-                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-[#0B0B0D] border border-[#222226] p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-zinc-300 font-mono">Canlı Bağlantı Testi</span>
-                        <span className="text-[9px] text-zinc-500 font-mono">ANLIK SORGULAMA</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-400 leading-relaxed">
-                        Girdiğiniz bilgilerin doğruluğunu kontrol etmek ve botun size mesaj gönderebildiğinden emin olmak için testi başlatın.
-                      </p>
-                      <div className="flex items-center gap-3 pt-1">
-                        <button
-                          onClick={handleTestTelegram}
-                          disabled={telegramTestStatus === 'testing'}
-                          className="bg-sky-600 hover:bg-sky-500 disabled:bg-sky-800 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-4 py-2.5 rounded-none transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          {telegramTestStatus === 'testing' ? (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              TEST EDİLİYOR...
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-3.5 h-3.5" />
-                              BAĞLANTIYI TEST ET
-                            </>
-                          )}
-                        </button>
-                        {telegramTestStatus !== 'idle' && (
-                          <span className={`text-[11px] font-mono font-semibold ${
-                            telegramTestStatus === 'success' ? 'text-emerald-400' : 'text-rose-400'
-                          }`}>
-                            {telegramTestMessage}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Solana Wallet Credentials Card */}
-                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
-                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Wallet className="w-5 h-5 text-emerald-400" />
-                        <div>
-                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Solana Cüzdan Ayarları</h4>
-                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">İŞLEM İMZALAMA VE YETKİLENDİRME</p>
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Cüzdan</span>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Cüzdan Özel Anahtarı (SOLANA_PRIVATE_KEY)</label>
-                        <input
-                          type="password"
-                          value={privateKey}
-                          onChange={(e) => {
-                            setPrivateKey(e.target.value);
-                            localStorage.setItem('solana_private_key', e.target.value);
-                          }}
-                          placeholder="Örn: Phantom dışa aktarılan base58 anahtarı veya [12, 34, 56...] dizi formatı"
-                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-
-                      <div className="p-4 bg-zinc-950/40 border border-[#222226] rounded-none space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <span className="text-xs font-bold font-mono uppercase tracking-wide">Önemli Güvenlik Uyarısı</span>
-                        </div>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
-                          Girdiğiniz özel anahtar kesinlikle hiçbir sunucuya gönderilmez. Sadece tarayıcınızın yerel hafızasında (<span className="text-indigo-400 font-mono">Local Storage</span>) saklanır ve ürettiğiniz <span className="text-emerald-400 font-mono">bot.ts</span> dosyasına yerleştirilir. 
-                          Eğer kodu bilgisayarınızda veya sunucunuzda <span className="text-emerald-400 font-mono">.env</span> dosyası ile çalıştırmak isterseniz, bu alanı boş bırakıp doğrudan <span className="text-indigo-400 font-mono">SOLANA_PRIVATE_KEY</span> ortam değişkenini kullanabilirsiniz.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Security Credentials Card */}
-                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
-                    <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <KeyRound className="w-5 h-5 text-indigo-400" />
-                        <div>
-                          <h4 className="text-sm font-serif font-bold text-white uppercase tracking-wide">Yönetim Paneli Giriş Bilgileri</h4>
-                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">KULLANICI GÜVENLİĞİ VE ŞİFRE YÖNETİMİ</p>
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 font-bold uppercase tracking-wider font-mono">Kimlik</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Kullanıcı Adı</label>
-                        <input
-                          type="text"
-                          value={panelUsername}
-                          onChange={(e) => {
-                            setPanelUsername(e.target.value);
-                            localStorage.setItem('panel_username', e.target.value);
-                          }}
-                          placeholder="Yönetici kullanıcı adı"
-                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Giriş Şifresi</label>
-                        <input
-                          type="text"
-                          value={panelPassword}
-                          onChange={(e) => {
-                            setPanelPassword(e.target.value);
-                            localStorage.setItem('panel_password', e.target.value);
-                          }}
-                          placeholder="Yönetici şifresi"
-                          className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-zinc-500 leading-normal font-mono">
-                      ℹ️ Bilgiler tarayıcınızın güvenli yerel hafızasında (Local Storage) saklanır. Şifreyi değiştirdiğiniz an, sonraki girişlerde yeni şifreniz geçerli olacaktır.
-                    </p>
-                  </div>
-
+<p className="text-xs text-zinc-400">Özel anahtar ve Telegram bilgileri yalnızca VPS üzerindeki bot servisinde yönetilir. Panel parolası sunucuda değiştirilir.</p>
                   {/* Network and Performance Synchronized Settings */}
                   <div className="bg-[#121215] border border-[#222226] p-6 space-y-5">
                     <div className="border-b border-[#222226] pb-4 flex items-center justify-between">
@@ -2387,11 +2035,11 @@ export default function App() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Solana RPC Bağlantı Adresi (Private/Custom)</label>
+                        <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Tarayıcı RPC adresi (sabit)</label>
                         <input
                           type="text"
                           value={rpcUrl}
-                          onChange={(e) => setRpcUrl(e.target.value)}
+                          readOnly
                           placeholder="https://mainnet.helius-rpc.com/?api-key=..."
                           className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                         />
@@ -2408,11 +2056,11 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Yedekli Jupiter API Adresi (İsteğe Bağlı)</label>
+                      <label className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono font-bold">Tarayıcı Jupiter API adresi (sabit)</label>
                       <input
                         type="text"
                         value={jupiterApiUrl}
-                        onChange={(e) => setJupiterApiUrl(e.target.value)}
+                        readOnly
                         placeholder="Yedekli listeye eklemek veya değiştirmek için girin (örn. https://api.jup.ag/swap/v1)"
                         className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
@@ -2428,65 +2076,14 @@ export default function App() {
                 {/* Right Column (4 cols): PM2 & Execution Tutorial */}
                 <div className="lg:col-span-4 space-y-6">
                   
-                  {/* Dynamic PM2 Tutorial Card */}
-                  <div className="bg-[#121215] border border-[#222226] p-6 space-y-4">
-                    <div className="border-b border-[#222226] pb-3">
-                      <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5">
-                        <HelpCircle className="w-4 h-4 text-indigo-400" />
-                        PM2 VE BOT.TS KILAVUZU
-                      </h4>
-                      <p className="text-[9px] text-zinc-500 font-mono mt-1">PM2 İLE ARKA PLANDA KESİNTİSİZ ÇALIŞTIRMA</p>
-                    </div>
-
-                    <div className="space-y-4 text-xs leading-relaxed text-zinc-400 font-sans">
-                      
-                      <div className="space-y-2">
-                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">1. PM2 Nedir ve Neden Kullanılır?</span>
-                        <p>
-                          PM2, Linux ve Windows sunucularda çalışan Node.js/TypeScript uygulamalarınızı <strong className="text-zinc-200">arka planda (daemon)</strong> kesintisiz yürütmenizi sağlayan bir proses yöneticisidir. Terminali kapatsanız dahi botunuz çalışmaya devam eder, sunucu çökerse botu otomatik ayağa kaldırır.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">2. bot.ts İsmi Nereden Gelir?</span>
-                        <p>
-                          Yandaki panelden <strong className="text-zinc-200">"İNDİR (bot.ts)"</strong> butonuna basarak bilgisayarınıza kaydettiğiniz özelleştirilmiş dosya sizin asıl bot kodunuzdur. Sunucunuzda (örn. Ubuntu) bir çalışma dizini açıp (örn. `/root/solana-bot`) bu dosyanın ismini <code className="font-mono text-indigo-400">bot.ts</code> olarak kaydettiğinizde, PM2 komutunun hedef dosyası hazır hale gelir.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2 bg-[#0B0B0D] border border-[#222226] p-3">
-                        <span className="text-[10px] font-mono font-bold uppercase text-indigo-400 tracking-wide block">PM2 Komutu Analizi:</span>
-                        <code className="block text-[10px] font-mono text-zinc-300 break-all bg-[#121215] p-2 border border-[#222226]">
-                          pm2 start "npx tsx src/bot.ts" --name solana-arbitrage-bot
-                        </code>
-                        <ul className="list-disc list-inside text-[10px] text-zinc-400 space-y-1 font-mono mt-1.5">
-                          <li><strong className="text-zinc-200">npx tsx:</strong> TS dosyalarını ön-derleme yapmadan doğrudan süper hızlı çalıştırır.</li>
-                          <li><strong className="text-zinc-200">src/bot.ts:</strong> Bot dosyanızın sunucudaki konumu.</li>
-                          <li><strong className="text-zinc-200">--name:</strong> PM2 kontrol listesindeki adı.</li>
-                        </ul>
-                      </div>
-
-                      <div className="space-y-2 border-t border-[#222226] pt-3">
-                        <span className="text-[11px] font-mono font-bold uppercase text-white tracking-wide block">Faydalı PM2 Komutları:</span>
-                        <div className="grid grid-cols-1 gap-2 text-[10px] font-mono text-zinc-300">
-                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
-                            <div className="text-indigo-400 font-semibold">pm2 logs solana-arbitrage-bot</div>
-                            <div className="text-zinc-500 mt-0.5 text-[9px]">Botun anlık konsol çıktılarını ve yakaladığı kârları izler.</div>
-                          </div>
-                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
-                            <div className="text-indigo-400 font-semibold">pm2 restart solana-arbitrage-bot</div>
-                            <div className="text-zinc-500 mt-0.5 text-[9px]">Yeni ayarların (Örn: telegram token) geçerli olması için botu yeniden başlatır.</div>
-                          </div>
-                          <div className="bg-[#0B0B0D] p-2 border border-[#222226]">
-                            <div className="text-indigo-400 font-semibold">pm2 status</div>
-                            <div className="text-zinc-500 mt-0.5 text-[9px]">Tüm aktif botların CPU/RAM kullanımını listeler.</div>
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
-
+<div className="bg-[#121215] border border-[#222226] p-6 space-y-4 text-xs text-zinc-400">
+ <h4 className="text-sm text-zinc-100">Ubuntu güvenli servis yönetimi</h4>
+ <p>Panel ve bot ayrı Linux kullanıcılarıyla çalışır. Özel anahtar yalnızca bot servisine systemd kimlik bilgisi olarak verilir. Panel canlı işlemleri başlatamaz veya ayarlarını değiştiremez.</p>
+ <p>Ayrıntılı adımlar depodaki SECURITY_SETUP_TR.md dosyasındadır. Canlı bot belirsiz işlem sonucu veya limit aşımında durur; otomatik yeniden başlatılmaz.</p>
+ <code className="block break-all">sudo systemctl status solarb-panel solarb-bot</code>
+ <code className="block break-all">sudo journalctl -u solarb-bot -n 50</code>
+ <code className="block break-all">sudo systemctl stop solarb-bot</code>
+ </div>
                 </div>
 
               </motion.div>
@@ -2510,4 +2107,3 @@ export default function App() {
     </div>
   );
 }
-

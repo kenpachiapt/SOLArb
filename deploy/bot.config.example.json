@@ -1,0 +1,16 @@
+{
+  "startToken": "SOL",
+  "interToken": "ALL",
+  "amount": 0.01,
+  "minProfitPct": 0.5,
+  "slippagePct": 0.2,
+  "priorityFeeSol": 0.0001,
+  "scanInterval": 5,
+  "maxTokens": 500,
+  "scanBatchSize": 25,
+  "minLiquidityUsd": 50000,
+  "minVolume24hUsd": 10000,
+  "autoDiscoverMeme": true,
+  "autoSpyWallet": false,
+  "customMints": ""
+}

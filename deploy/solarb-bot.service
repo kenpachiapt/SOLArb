@@ -1,0 +1,44 @@
+[Unit]
+Description=SOLArb isolated automatic trading runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=solarb-bot
+Group=solarb-bot
+WorkingDirectory=/opt/solarb
+ExecStart=/usr/bin/node /opt/solarb/SOLArb/bot.ts
+Environment=NODE_ENV=production
+Environment=BOT_ENV_FILE=%d/bot-env
+Environment=SOLANA_KEYPAIR_FILE=%d/wallet-key
+Environment=SOLARB_CONFIG_FILE=%d/bot-config
+Environment=BOT_STATE_DIR=/var/lib/solarb-bot
+LoadCredential=bot-env:/etc/solarb/bot.env
+LoadCredential=bot-config:/etc/solarb/bot.json
+LoadCredential=wallet-key:/etc/solarb/wallet-key
+StateDirectory=solarb-bot
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/solarb-bot
+InaccessiblePaths=/etc/solarb /var/lib/solarb-panel
+# Never automatically restart a process after an uncertain transaction.
+Restart=no
+MemoryMax=768M
+TasksMax=128
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
