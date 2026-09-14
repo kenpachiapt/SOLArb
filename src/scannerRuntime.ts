@@ -17,7 +17,7 @@ const SCANNER = {
   timeoutMs: setting(process.env.HTTP_TIMEOUT_MS, 10000, 100, 60000),
   maxQuoteAgeMs: setting(process.env.MAX_QUOTE_AGE_MS, 10000, 100, 60000),
   maxImpactPct: setting(process.env.MAX_PRICE_IMPACT_PCT, 1, 0, 100),
-  dryRun: process.env.SOLANA_DRY_RUN === undefined ? CONFIG.DRY_RUN !== false : process.env.SOLANA_DRY_RUN !== 'false',
+  dryRun: process.env.SOLARB_PANEL_SCANNER === 'true' || process.env.SOLANA_DRY_RUN !== 'false',
 };
 const jupiterKey = process.env.JUPITER_API_KEY || '';
 let nextJupiterRequest = 0;
@@ -33,7 +33,7 @@ async function requestJson(url: string, init: RequestInit = {}, jupiter = false)
     // Never forward the official API key to a custom endpoint.
     if (jupiter && jupiterKey && new URL(url).origin === 'https://api.jup.ag') headers.set('x-api-key', jupiterKey);
     try {
-      const response = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(SCANNER.timeoutMs) });
+      const response = await fetch(url, { ...init, headers, redirect: 'error', signal: AbortSignal.timeout(SCANNER.timeoutMs) });
       if (response.status === 429 || response.status >= 500) {
         const retry = response.headers.get('retry-after');
         const seconds = Number(retry);

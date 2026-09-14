@@ -1,3 +1,4 @@
+import { botSecurityRuntime } from './botSecurityRuntime.ts';
 import { scannerRuntime } from './scannerRuntime.ts';
 export interface BotOptions {
   rpcUrl: string;
@@ -81,7 +82,7 @@ export function generateArbitrageCode(options: BotOptions): string {
  * gerçek teklifler üzerinden fırsat adaylarını tarar. Varsayılan mod işlem göndermez.
  */
 
-import { Connection, Keypair, VersionedTransaction, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair, VersionedTransaction, PublicKey, TransactionMessage, SystemProgram } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import bs58 from "bs58";
 import * as dns from "dns";
@@ -97,18 +98,22 @@ if (dns && typeof dns.setDefaultResultOrder === "function") {
   dns.setDefaultResultOrder("ipv4first");
 }
 
-// Ortam değişkenlerini yükle (.env)
-dotenv.config();
+${botSecurityRuntime}
+// No implicit .env loading. The panel scanner cannot import the live bot environment.
+if (process.env.BOT_ENV_FILE && process.env.SOLARB_PANEL_SCANNER !== 'true') {
+  const entries = dotenv.parse(readPrivateFile(process.env.BOT_ENV_FILE));
+  for (const [key, value] of Object.entries(entries)) if (process.env[key] === undefined) process.env[key] = value;
+}
 
 // Yapılandırma Parametreleri
 const CONFIG = {
   RPC_URL: ${JSON.stringify(rpcUrl || 'https://api.mainnet-beta.solana.com')},
 
-  START_TOKEN: "${startToken}",
+  START_TOKEN: ${JSON.stringify(startToken)},
   START_MINT: "${startMint}",
   START_DECIMALS: ${decimals},
 
-  INTER_TOKEN: "${interToken}",
+  INTER_TOKEN: ${JSON.stringify(interToken)},
   INTER_MINT: "${interMint}",
   INTER_DECIMALS: ${interDecimals},
 
@@ -126,39 +131,33 @@ const CONFIG = {
 
   JUPITER_API_URL: ${JSON.stringify(jupiterApiUrl || '')},
 
-  TELEGRAM_TOKEN: ${JSON.stringify(telegramToken || '')},
-  TELEGRAM_CHAT_ID: ${JSON.stringify(telegramChatId || '')},
+  TELEGRAM_TOKEN: "",
+  TELEGRAM_CHAT_ID: "",
 
   CUSTOM_MINTS: ${JSON.stringify(customMints || '')},
   MAX_TOKENS: ${options.maxTokens ?? 500},
   SCAN_BATCH_SIZE: ${options.scanBatchSize ?? 25},
   MIN_LIQUIDITY_USD: ${options.minLiquidityUsd ?? 50000},
   MIN_VOLUME_24H_USD: ${options.minVolume24hUsd ?? 10000},
-  DRY_RUN: ${options.dryRun ?? true},
+  DRY_RUN: true,
   AUTO_DISCOVER_MEME: ${autoDiscoverMeme === undefined ? true : autoDiscoverMeme},
   SPY_WALLET_ADDRESS: ${JSON.stringify(spyWalletAddress || '')},
   AUTO_SPY_WALLET: ${autoSpyWallet === undefined ? false : autoSpyWallet}
 };
 
-let privateKeyString = ${JSON.stringify(privateKey || '')};
+
 
 // Eğer yerel veya üst klasörde config.json varsa dinamik olarak yükle (panel ile tam senkronizasyon için)
 try {
-  const possiblePaths = [
-    path.join(process.cwd(), "config.json"),
-    path.join(process.cwd(), "SOLArb", "config.json"),
-    path.join(__dirname, "config.json"),
-    path.join(__dirname, "..", "config.json")
-  ];
+  const possiblePaths = process.env.SOLARB_CONFIG_FILE ? [process.env.SOLARB_CONFIG_FILE] : [];
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      const fileData = JSON.parse(fs.readFileSync(p, "utf8"));
+      const fileData = JSON.parse(process.env.SOLARB_PANEL_SCANNER === 'true' ? fs.readFileSync(p, "utf8") : readPrivateFile(p));
       if (fileData) {
         for (const [key, field] of Object.entries({ maxTokens: 'MAX_TOKENS', scanBatchSize: 'SCAN_BATCH_SIZE', minLiquidityUsd: 'MIN_LIQUIDITY_USD', minVolume24hUsd: 'MIN_VOLUME_24H_USD' })) {
           if (fileData[key] !== undefined) (CONFIG as any)[field] = Number(fileData[key]);
         }
         if (fileData.dryRun !== undefined) CONFIG.DRY_RUN = fileData.dryRun !== false && fileData.dryRun !== 'false';
-        if (fileData.rpcUrl) CONFIG.RPC_URL = fileData.rpcUrl;
         if (fileData.startToken) CONFIG.START_TOKEN = fileData.startToken;
         if (fileData.interToken) CONFIG.INTER_TOKEN = fileData.interToken;
         if (fileData.amount !== undefined) {
@@ -170,9 +169,6 @@ try {
         if (fileData.priorityFeeSol !== undefined) CONFIG.PRIORITY_FEE_SOL = Number(fileData.priorityFeeSol);
         if (fileData.scanInterval !== undefined) CONFIG.SCAN_INTERVAL = Number(fileData.scanInterval) * 1000;
         if (fileData.useJito !== undefined) CONFIG.USE_JITO = fileData.useJito === true || fileData.useJito === "true";
-        if (fileData.telegramToken) CONFIG.TELEGRAM_TOKEN = fileData.telegramToken;
-        if (fileData.telegramChatId) CONFIG.TELEGRAM_CHAT_ID = fileData.telegramChatId;
-        if (fileData.privateKey) privateKeyString = fileData.privateKey;
         if (fileData.jupiterApiUrl !== undefined) CONFIG.JUPITER_API_URL = fileData.jupiterApiUrl;
         if (fileData.customMints !== undefined) CONFIG.CUSTOM_MINTS = fileData.customMints;
         if (fileData.autoDiscoverMeme !== undefined) CONFIG.AUTO_DISCOVER_MEME = fileData.autoDiscoverMeme === true || fileData.autoDiscoverMeme === "true";
@@ -184,13 +180,11 @@ try {
       }
     }
   }
-} catch (e) {
-  // Sessizce geç
-}
+} catch { throw new Error('Yapılandırma dosyası okunamadı.'); }
 
 // Ortam değişkenleri ezme kontrolü (.env)
 if (process.env.SOLANA_RPC_URL) CONFIG.RPC_URL = process.env.SOLANA_RPC_URL;
-if (process.env.SOLANA_PRIVATE_KEY) privateKeyString = process.env.SOLANA_PRIVATE_KEY;
+if (process.env.SOLANA_PRIVATE_KEY) throw new Error('Özel anahtarı ortam değeri olarak kullanmayın; SOLANA_KEYPAIR_FILE gerekli.');
 if (process.env.TELEGRAM_TOKEN) CONFIG.TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 if (process.env.TELEGRAM_CHAT_ID) CONFIG.TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 if (process.env.JUPITER_API_URL) CONFIG.JUPITER_API_URL = process.env.JUPITER_API_URL;
@@ -278,7 +272,7 @@ async function discoverSpyWalletTokens() {
         }
       });
     } catch (err: any) {
-      console.warn("⚠️ [Cüzdan Casusu] Token hesapları alınamadı:", err.message || err);
+      console.warn("⚠️ [Cüzdan Casusu] Token hesapları alınamadı.");
     }
 
     // 2. Son İşlemleri Çek (Geçmiş İşlemler)
@@ -311,7 +305,7 @@ async function discoverSpyWalletTokens() {
         }
       });
     } catch (err: any) {
-      console.warn("⚠️ [Cüzdan Casusu] Son işlemler alınamadı:", err.message || err);
+      console.warn("⚠️ [Cüzdan Casusu] Son işlemler alınamadı.");
     }
 
     const mintList = Array.from(uniqueMints).filter(validMint).slice(0, SCANNER.maxTokens);
@@ -360,7 +354,7 @@ async function discoverSpyWalletTokens() {
       console.log("✅ [Cüzdan Casusu] Başarıyla " + cachedSpyTokens.length + " adet aktif balina cüzdanı tokeni keşfedildi ve dairesel taramaya beslendi.");
     }
   } catch (error: any) {
-    console.warn("⚠️ [Cüzdan Casusu] Genel takip hatası (eski veriler kullanılacak):", error.message);
+    console.warn("⚠️ [Cüzdan Casusu] Genel takip hatası (eski veriler kullanılacak).");
   }
   return cachedSpyTokens;
 }
@@ -373,34 +367,17 @@ if (!CONFIG.RPC_URL || typeof CONFIG.RPC_URL !== "string" || !CONFIG.RPC_URL.sta
   CONFIG.RPC_URL = "https://api.mainnet-beta.solana.com";
 }
 
-// Cüzdan Kurulumu
-let wallet: Keypair;
-if (SCANNER.dryRun) {
-  wallet = Keypair.generate(); // No signing or broadcasting in scan mode.
-} else {
-if (!privateKeyString) {
-  console.error("❌ HATA: SOLANA_PRIVATE_KEY ortam değişkeni tanımlanmamış!");
-  process.exit(1);
-}
-
-try {
-  wallet = Keypair.fromSecretKey(bs58.decode(privateKeyString));
-  console.log("🔑 Cüzdan başarıyla yüklendi:", wallet.publicKey.toBase58());
-} catch (e) {
-  try {
-    const arr = JSON.parse(privateKeyString);
-    wallet = Keypair.fromSecretKey(Uint8Array.from(arr));
-    console.log("🔑 Cüzdan başarıyla yüklendi (Dizi formatı):", wallet.publicKey.toBase58());
-  } catch (err) {
-    console.error("❌ HATA: Özel anahtar (Private Key) çözümlenemedi!");
-    process.exit(1);
-  }
-}
-
-}
+// Only the isolated Linux live service can load a private key.
+if (process.env.SOLARB_PANEL_SCANNER === 'true' && !SCANNER.dryRun) throw new Error('Panel yalnızca tarama yapabilir.');
+const liveRisk = SCANNER.dryRun ? null : initializeLiveRisk();
+const wallet: Keypair = SCANNER.dryRun ? Keypair.generate() : walletFromFile();
+if (!SCANNER.dryRun) console.log('İşlem cüzdanı: ' + wallet.publicKey.toBase58());
 
 // Solana Bağlantısı
-const connection = new Connection(CONFIG.RPC_URL, "confirmed");
+const connection = new Connection(CONFIG.RPC_URL, {
+  commitment: 'confirmed', disableRetryOnRateLimit: true,
+  fetch: (url, init) => fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10000) }),
+});
 
 /**
  * Telegram Botu üzerinden bildirim mesajı gönderir
@@ -410,6 +387,7 @@ async function sendTelegramNotification(message: string) {
   const url = "https://api.telegram.org/bot" + CONFIG.TELEGRAM_TOKEN + "/sendMessage";
   try {
     await fetch(url, {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -419,7 +397,7 @@ async function sendTelegramNotification(message: string) {
       })
     });
   } catch (error) {
-    console.error("⚠️ Telegram bildirimi gönderilirken hata oluştu:", error.message);
+    console.error("Telegram bildirimi gönderilemedi.");
   }
 }
 
@@ -474,28 +452,56 @@ async function getSwapTransaction(quoteResponse: any, userPublicKey: string) {
 /**
  * İşlemleri Jito MEV Blok Motoruna tek bir atomik bundle (paket) olarak gönderir
  */
-async function sendBundleToJito(txs: VersionedTransaction[]) {
-  const base64Txs = txs.map(tx => Buffer.from(tx.serialize()).toString("base64"));
-
-  const payload = {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "sendBundle",
-    params: [base64Txs, { encoding: "base64" }]
-  };
-
-  try {
-    const response = await fetch(CONFIG.JITO_BLOCK_ENGINE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    console.error("⚠️ Jito'ya bundle gönderilirken hata oluştu:", error.message);
-    return null;
+async function jitoRequest(method: string, params: any[]) {
+  const response = await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(10000),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  if (!response.ok) throw new Error('Jito isteği başarısız.');
+  const result = await response.json();
+  if (result.error || !result.result) throw new Error('Jito sonucu geçersiz.');
+  return result.result;
+}
+async function validateTransaction(tx: VersionedTransaction, quote: any) {
+  if (tx.message.header.numRequiredSignatures !== 1 || !tx.message.staticAccountKeys[0].equals(wallet.publicKey)) throw new Error('Beklenmeyen imzalayan/ücret ödeyen.');
+  const tables = [];
+  for (const lookup of tx.message.addressTableLookups) {
+    const table = await connection.getAddressLookupTable(lookup.accountKey);
+    if (!table.value) throw new Error('Adres tablosu bulunamadı.');
+    tables.push(table.value);
   }
+  const message = TransactionMessage.decompile(tx.message, { addressLookupTableAccounts: tables });
+  const allowed = new Set(['JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', 'ComputeBudget111111111111111111111111111111', '11111111111111111111111111111111', 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL']);
+  const tokenProgram = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+  const ataProgram = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+  const associated = (mint: string) => PublicKey.findProgramAddressSync([wallet.publicKey.toBuffer(), tokenProgram.toBuffer(), new PublicKey(mint).toBuffer()], ataProgram)[0];
+  const wrappedSol = associated('So11111111111111111111111111111111111111112');
+  let jupiterInstructions = 0;
+  for (const instruction of message.instructions) {
+    const program = instruction.programId.toBase58();
+    if (program === 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4') jupiterInstructions++;
+    if (program === SystemProgram.programId.toBase58()) {
+      if (instruction.data.length !== 12 || instruction.data.readUInt32LE(0) !== 2 || !instruction.keys[0]?.pubkey.equals(wallet.publicKey) || !instruction.keys[1]?.pubkey.equals(wrappedSol) || instruction.data.readBigUInt64LE(4) > BigInt(CONFIG.TRADE_AMOUNT_RAW)) throw new Error('İzin verilmeyen SOL transferi.');
+    }
+    if (program === ataProgram.toBase58()) {
+      const mint = instruction.keys[3]?.pubkey.toBase58();
+      if (!mint || ![quote.inputMint,quote.outputMint].includes(mint) || !instruction.keys[0]?.pubkey.equals(wallet.publicKey) || !instruction.keys[2]?.pubkey.equals(wallet.publicKey) || !instruction.keys[1]?.pubkey.equals(associated(mint)) || !(instruction.data.length === 0 || (instruction.data.length === 1 && instruction.data[0] === 1))) throw new Error('Beklenmeyen token hesabı.');
+    }
+    if (program === 'ComputeBudget111111111111111111111111111111') {
+      if (!((instruction.data[0] === 2 && instruction.data.length === 5 && instruction.data.readUInt32LE(1) <= 1400000) || (instruction.data[0] === 3 && instruction.data.length === 9))) throw new Error('Beklenmeyen hesaplama bütçesi.');
+    }
+    if (!allowed.has(instruction.programId.toBase58())) throw new Error('İzin verilmeyen işlem programı.');
+    if (instruction.programId.toBase58() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
+      // No approvals, authority changes, token transfers or arbitrary mint/burn operations.
+      if (![9,17,18].includes(instruction.data[0])) throw new Error('İzin verilmeyen token talimatı.');
+      if (instruction.data[0] === 9 && (!instruction.keys[1]?.pubkey.equals(wallet.publicKey) || !instruction.keys[2]?.pubkey.equals(wallet.publicKey))) throw new Error('Hesap kapatma alıcısı farklı.');
+      if (instruction.data[0] === 17 && !instruction.keys[0]?.pubkey.equals(wrappedSol)) throw new Error('Beklenmeyen SOL hesabı.');
+      if (instruction.data[0] === 18 && (instruction.data.length !== 33 || !instruction.data.subarray(1).equals(wallet.publicKey.toBuffer()))) throw new Error('Beklenmeyen hesap sahibi.');
+    }
+  }
+  if (jupiterInstructions !== 1) throw new Error('Tam olarak bir Jupiter takası gerekli.');
+  const fee = await connection.getFeeForMessage(tx.message, 'confirmed');
+  if (fee.value === null || fee.value / 1e9 > liveRisk!.maxFees / 2) throw new Error('İşlem ücreti sınırı aşıyor.');
 }
 
 /**
@@ -572,53 +578,52 @@ async function checkArbitrage() {
           console.log('[FIRSAT ADAYI / TARAMA] ' + target.symbol + ' | ücret ve slipaj sonrası tahmin: ' + profitHuman.toFixed(6) + ' ' + CONFIG.START_TOKEN + ' (%' + profitPct.toFixed(3) + ') | işlem gönderilmedi');
           continue;
         }
-        console.log("   🎉 🎉 ARBİTRAJ FIRSATI BULUNDU! [" + target.symbol + "] Kâr Hedefi (%" + CONFIG.MIN_PROFIT_PCT + ") aşıldı! %" + profitPct.toFixed(3) + " kâr oranı.");
-
-        console.log("   [1/4] İlk takas işlemi oluşturuluyor...");
-        const swapTx1Base64 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
-
-        console.log("   [2/4] İkinci takas işlemi oluşturuluyor...");
-        const swapTx2Base64 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
-
-        if (!swapTx1Base64 || !swapTx2Base64) {
-          console.log("   ❌ İşlemler oluşturulamadı. Es geçiliyor.");
-          continue;
+        liveRisk!.check();
+        await liveRisk!.reserve(connection, wallet);
+        const swap1 = await getSwapTransaction(route1, wallet.publicKey.toBase58());
+        const swap2 = await getSwapTransaction(route2, wallet.publicKey.toBase58());
+        if (!swap1 || !swap2) throw new Error('Takas oluşturulamadı.');
+        const tx1 = VersionedTransaction.deserialize(Buffer.from(swap1, 'base64'));
+        const tx2 = VersionedTransaction.deserialize(Buffer.from(swap2, 'base64'));
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        tx1.message.recentBlockhash = blockhash; tx2.message.recentBlockhash = blockhash;
+        await validateTransaction(tx1, route1); await validateTransaction(tx2, route2);
+        const tipAccounts = await jitoRequest('getTipAccounts', []);
+        if (!Array.isArray(tipAccounts) || !tipAccounts.length || !tipAccounts.every(validMint)) throw new Error('Jito tip hesapları geçersiz.');
+        // Put the tip into the second swap itself. Never send an independent tip transaction.
+        const tables = [];
+        for (const lookup of tx2.message.addressTableLookups) {
+          const table = await connection.getAddressLookupTable(lookup.accountKey);
+          if (!table.value) throw new Error('Adres tablosu bulunamadı.'); tables.push(table.value);
         }
-
-        const tx1 = VersionedTransaction.deserialize(Buffer.from(swapTx1Base64, "base64"));
-        const tx2 = VersionedTransaction.deserialize(Buffer.from(swapTx2Base64, "base64"));
-
-        const { blockhash } = await connection.getLatestBlockhash("confirmed");
-        tx1.message.recentBlockhash = blockhash;
-        tx2.message.recentBlockhash = blockhash;
-
-        tx1.sign([wallet]);
-        tx2.sign([wallet]);
-
-        console.log("   [3/4] İşlemler imzalandı. Yayınlanıyor...");
-
-        if (CONFIG.USE_JITO) {
-          console.log("   [JITO] Jito MEV Blok Motoru ile atomik bundle gönderiliyor...");
-          const res = await sendBundleToJito([tx1, tx2]);
-          if (!res?.result || res.error) throw new Error("Jito bundle kabul edilmedi");
-          console.log("   Jito bundle kabul edildi, zincir onayı doğrulanmadı:", res.result);
-          await sendTelegramNotification("🔔 *SOLArb BUNDLE GÖNDERİLDİ (ONAY BEKLİYOR)*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Tahmini Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Aktif (Bundle)");
-        } else {
-          const sig1 = await connection.sendTransaction(tx1, { skipPreflight: false });
-          const confirmed1 = await connection.confirmTransaction(sig1, "confirmed");
-          if (confirmed1.value.err) throw new Error("İlk takas başarısız");
-          const sig2 = await connection.sendTransaction(tx2, { skipPreflight: false });
-          console.log("   [4/4] Onay bekleniyor...");
-          const confirmed2 = await connection.confirmTransaction(sig2, "confirmed");
-          if (confirmed2.value.err) throw new Error("İkinci takas başarısız; ara token bakiyesini kontrol edin");
-          console.log("   ✅ İşlemler başarıyla onaylandı!");
-          await sendTelegramNotification("🔔 *SOLArb ARBİTRAJ BAŞARILI!*\\n\\n💸 *Rota:* " + CONFIG.START_TOKEN + " ➔ " + target.symbol + " ➔ " + CONFIG.START_TOKEN + "\\n💵 *Sermaye:* " + CONFIG.TRADE_AMOUNT + " " + CONFIG.START_TOKEN + "\\n📈 *Tahmini Kâr:* +" + profitHuman.toFixed(6) + " " + CONFIG.START_TOKEN + " (%" + profitPct.toFixed(3) + ")\\n🛡️ *Jito MEV Koruması:* Pasif\\n🔗 *Tx1:* https://solscan.io/tx/" + sig1 + "\\n🔗 *Tx2:* https://solscan.io/tx/" + sig2);
+        const message = TransactionMessage.decompile(tx2.message, {addressLookupTableAccounts:tables});
+        message.instructions.push(SystemProgram.transfer({fromPubkey:wallet.publicKey,toPubkey:new PublicKey(tipAccounts[0]),lamports:Math.ceil(liveRisk!.tip * 1e9)}));
+        const tippedTx2 = new VersionedTransaction(message.compileToV0Message(tables));
+        if (tx1.serialize().length > 1232 || tippedTx2.serialize().length > 1232) throw new Error('İşlem boyutu sınırı aşıyor.');
+        if (Date.now() - quoteStarted > SCANNER.maxQuoteAgeMs) throw new Error('İmzalamadan önce teklif eskidi.');
+        liveRisk!.check();
+        tx1.sign([wallet]); tippedTx2.sign([wallet]);
+        const signatures = [bs58.encode(tx1.signatures[0]), bs58.encode(tippedTx2.signatures[0])];
+        console.log('İşlem imzaları (sonuç kontrolü için): ' + signatures.join(', '));
+        const bundleId = await jitoRequest('sendBundle', [[Buffer.from(tx1.serialize()).toString('base64'), Buffer.from(tippedTx2.serialize()).toString('base64')], {encoding:'base64'}]);
+        if (typeof bundleId !== 'string') throw new Error('Bundle kimliği geçersiz.');
+        console.log('Bundle gönderildi; zincir onayı bekleniyor.');
+        let confirmed = false;
+        for (let attempt=0; attempt<30; attempt++) {
+          await sleep(2000);
+          const result = await connection.getSignatureStatuses(signatures, {searchTransactionHistory:true});
+          if (result.value.some(s => s?.err)) throw new Error('Zincirde başarısız işlem; operatör kontrolü gerekli.');
+          if (result.value.every(s => s && ['confirmed','finalized'].includes(s.confirmationStatus || ''))) { confirmed=true; break; }
         }
-
+        if (!confirmed) throw new Error('Onay belirsiz; otomatik yeniden gönderim yapılmaz.');
+        liveRisk!.complete();
+        console.log('İki işlem zincirde onaylandı. Gerçek kâr için bakiye değişimlerini kontrol edin.');
+        await sendTelegramNotification('SOLArb: İki işlem onaylandı. Tahmini fark gerçekleşmiş kâr değildir.');
         break;
       }
     } catch (err: any) {
-      console.warn("[Tarama] " + target.symbol + ": " + err.message);
+      if (!SCANNER.dryRun) throw new Error('Canlı işlem durduruldu; risk kaydını ve zincir sonucunu kontrol edin.');
+      console.warn('[Tarama] Rota sorgusu başarısız.');
     }
   }
 }
@@ -640,7 +645,8 @@ async function main() {
     try {
       await checkArbitrage();
     } catch (e) {
-      console.error("Döngü hatası:", e.message);
+      if (!SCANNER.dryRun) throw e;
+      console.error('Tarama döngüsü başarısız.');
     }
     if (process.env.SOLANA_SCAN_ONCE === 'true') break;
     await sleep(CONFIG.SCAN_INTERVAL);
@@ -648,7 +654,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Uygulama başlatma hatası:", err);
+  console.error('Bot durdu. Yapılandırmayı, limitleri ve bekleyen işlemi kontrol edin.');
+  process.exitCode = 1;
 });
 `;
 }

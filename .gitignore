@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+config.json
+SOLArb/config.json
+var/
+secrets/
+*.key
+*-key.json
+*.pem
+panel.env
+bot.env

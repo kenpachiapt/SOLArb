@@ -1,0 +1,41 @@
+[Unit]
+Description=SOLArb authenticated read-only trading panel and scanner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=solarb-panel
+Group=solarb-panel
+WorkingDirectory=/opt/solarb
+ExecStart=/usr/bin/node /opt/solarb/server.ts
+Environment=NODE_ENV=production
+Environment=PANEL_PASSWORD_HASH_FILE=%d/panel-password
+Environment=PANEL_DATA_DIR=/var/lib/solarb-panel
+EnvironmentFile=/etc/solarb/panel.env
+LoadCredential=panel-password:/etc/solarb/panel-password
+StateDirectory=solarb-panel
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/solarb-panel
+InaccessiblePaths=/etc/solarb /var/lib/solarb-bot
+Restart=on-failure
+RestartSec=10
+MemoryMax=768M
+TasksMax=128
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
