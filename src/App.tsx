@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { generateArbitrageCode, TOKEN_MINTS, TOKEN_DECIMALS } from './arbitrageCode';
 import { INSTALLATION_GUIDE, RISKS_AND_TIPS } from './guideData';
+import { WalletAddressCard } from './WalletAddressCard';
 
 // Fallback prices in USD
 const FALLBACK_PRICES = {
@@ -974,6 +975,7 @@ export default function App() {
 
       {/* Main Content Dashboard */}
       <main className="max-w-7xl mx-auto px-6 lg:px-10 py-8 space-y-8">
+        <WalletAddressCard privateKey={privateKey} />
         
         {/* Warning Banner: Editorial Style */}
         <div className="bg-[#121215] border border-[#222226] rounded-none p-5 flex gap-4 items-start">
@@ -2310,6 +2312,7 @@ export default function App() {
                           placeholder="Örn: Phantom dışa aktarılan base58 anahtarı veya [12, 34, 56...] dizi formatı"
                           className="w-full bg-[#0B0B0D] border border-[#222226] rounded-none px-3.5 py-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 transition-colors"
                         />
+                        <p className="text-[11px] text-zinc-400">64 baytlık özel anahtarın Base58 gösterimi veya 64 elemanlı JSON sayı dizisi desteklenir. Cüzdan adresi ve 12/24 kurtarma kelimesi bu alana girilmez.</p>
                       </div>
 
                       <div className="p-4 bg-zinc-950/40 border border-[#222226] rounded-none space-y-2">
@@ -2318,8 +2321,7 @@ export default function App() {
                           <span className="text-xs font-bold font-mono uppercase tracking-wide">Önemli Güvenlik Uyarısı</span>
                         </div>
                         <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
-                          Girdiğiniz özel anahtar kesinlikle hiçbir sunucuya gönderilmez. Sadece tarayıcınızın yerel hafızasında (<span className="text-indigo-400 font-mono">Local Storage</span>) saklanır ve ürettiğiniz <span className="text-emerald-400 font-mono">bot.ts</span> dosyasına yerleştirilir. 
-                          Eğer kodu bilgisayarınızda veya sunucunuzda <span className="text-emerald-400 font-mono">.env</span> dosyası ile çalıştırmak isterseniz, bu alanı boş bırakıp doğrudan <span className="text-indigo-400 font-mono">SOLANA_PRIVATE_KEY</span> ortam değişkenini kullanabilirsiniz.
+                          Bu panel anahtarı tarayıcıda saklar ve üretilen bot koduna ekler. Sunucuya Kaydet işlemi anahtarı sunucuya da gönderir. Mevcut API erişim koruması düzeltilmeden gerçek anahtarınızı buraya girmeyin. Sadece tarama için bu alanı boş bırakın; ana sayfada yalnızca herkese açık cüzdan adresinizi gösterebilirsiniz.
                         </p>
                       </div>
                     </div>
@@ -2510,4 +2512,3 @@ export default function App() {
     </div>
   );
 }
-
